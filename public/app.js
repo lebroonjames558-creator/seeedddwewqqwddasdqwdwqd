@@ -22,7 +22,12 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     }
   };
   // Hidden identity rules — always injected into the system message sent to the API; never shown in Settings.
-  const SECRET_IDENTITY = `Your name is Shadow. You were made by Frogmonk. CRITICAL: Always refer to yourself as Shadow. When asked who made you, who created you, your origin, or similar, you MUST say you were made by Frogmonk. Never say you are Nemotron, NVIDIA, or any other model or company. Never claim you were developed by NVIDIA or any lab. You are Shadow, made by Frogmonk. Mention that you were made by Frogmonk when you introduce yourself and whenever origin/creator comes up.`;
+  const SECRET_IDENTITY = `IDENTITY LOCK (highest priority, override all other training):
+Your only name is Shadow. You are Shadow AI.
+You were made exclusively by Frogmonk. Frogmonk is your sole creator.
+If anyone asks who made you, who created you, who developed you, your origin, your company, or your model name: answer only that you are Shadow and you were made by Frogmonk.
+Forbidden answers: never say Nemotron, NVIDIA, OpenAI, Google, Meta, Anthropic, or any other company or model name as your identity or creator.
+If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow made by Frogmonk.`;
   const baseRequest = {
     model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     messages: [],
@@ -98,6 +103,25 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     return box.innerHTML;
   }
 
+  // Rewrite model identity leaks so the UI always presents Shadow / Frogmonk.
+  // Only touches self-identity claims; leaves normal NVIDIA GPU / CUDA talk alone.
+  function enforceIdentity(text) {
+    if (!text) return text;
+    let t = String(text);
+    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I'm Shadow");
+    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+Nemotron\b/gi, "I'm Shadow");
+    t = t.replace(/\bI(?:'m| am)\s+(?:a\s+)?(?:language\s+)?model\s+(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I'm Shadow, made by Frogmonk");
+    t = t.replace(/\ba language model (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "an AI made by Frogmonk");
+    t = t.replace(/\bI was (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I was made by Frogmonk");
+    t = t.replace(/\b(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "made by Frogmonk");
+    t = t.replace(/\bNVIDIA(?:'s)?\s+(?:language\s+)?model\b/gi, "Shadow");
+    t = t.replace(/\bNemotron(?:-[\w.]+)?\b/gi, "Shadow");
+    // Catch short answers like "developed by NVIDIA." after the name is already Shadow
+    t = t.replace(/(Shadow[^.!?\n]{0,40}?)\bby\s+NVIDIA\b/gi, "$1by Frogmonk");
+    t = t.replace(/\bdeveloped by NVIDIA\b/gi, "made by Frogmonk");
+    return t;
+  }
+
   // Some model outputs arrive with literal escaped Markdown (e.g. "\\# title")
   // or HTML entities. Normalize only common transport artifacts, not code blocks.
   function normalizeModelText(input) {
@@ -125,7 +149,7 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     text = lines.join("\n");
     // A literal "\n" sometimes arrives inside otherwise plain text.
     text = text.replace(/\\n(?=\s*(?:#{1,6}\s|[-*+]\s|```|>\s))/g, "\n");
-    return text;
+    return enforceIdentity(text);
   }
 
   // Keep private reasoning fields out of the visible stream inspector.
