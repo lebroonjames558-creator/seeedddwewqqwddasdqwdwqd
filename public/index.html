@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0814">
+  <title>Shadow AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/marked-gfm-heading-id@4.1.1/dist/index.umd.js"></script>
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="grain"></div>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><span class="brand-spark">✦</span></div>
+        <div><div class="brand-name">shadow<span> ai</span></div><div class="brand-caption">PRIVATE AI WORKSPACE</div></div>
+        <button class="icon-btn sidebar-close" id="closeSidebar" title="Close sidebar" aria-label="Close sidebar">×</button>
+      </div>
+      <button class="new-chat" id="newChat"><span class="plus">＋</span> New conversation <kbd>⌘ K</kbd></button>
+      <div class="side-label">WORKSPACE</div>
+      <button class="nav-item active" id="navChat"><span class="nav-icon">◈</span> Chat <span class="nav-dot"></span></button>
+      <button class="nav-item" id="toggleInspector"><span class="nav-icon">{ }</span> JSON inspector <span class="tiny-pill">LIVE</span></button>
+      <div class="side-label recent-label">RECENT THREADS <span id="threadCount">01</span></div>
+      <div class="thread-list" id="threadList"></div>
+      <div class="sidebar-spacer"></div>
+      <div class="model-card">
+        <div class="model-card-top"><span class="pulse"></span><span>MODEL ONLINE</span><button class="dots" title="Model information">···</button></div>
+        <div class="model-title">Shadow AI Engine</div>
+        <div class="model-id">Secure API connection</div>
+        <div class="model-meta"><span>30B-A3B</span><span>·</span><span>Coding assistant</span></div>
+      </div>
+      <div class="side-footer"><div class="avatar">NS</div><div class="footer-user"><strong>Personal workspace</strong><span>Running on this device</span></div><span class="local-lock" title="Local server">⌑</span></div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <div class="topbar-left"><button class="icon-btn mobile-menu" id="openSidebar" aria-label="Open sidebar">☰</button><div class="crumb">Workspace <span>/</span> <strong>Chat</strong></div></div>
+        <div class="topbar-right"><div class="connection"><span class="connection-dot" id="connectionDot"></span><span id="connectionText">Checking local server</span></div><button class="icon-btn" id="exportBtn" title="Export conversation">⇩</button><button class="icon-btn" id="settingsBtn" title="Model settings">⚙</button></div>
+      </header>
+
+      <section class="chat-scroll" id="chatScroll">
+        <div class="welcome" id="welcome">
+          <div class="welcome-eyebrow"><span class="eyebrow-line"></span> YOUR BUILD SPACE <span class="eyebrow-line"></span></div>
+          <div class="hero-orb"><div class="orb-ring ring-one"></div><div class="orb-ring ring-two"></div><div class="orb-core">✦</div><div class="orb-satellite"></div></div>
+          <h1>Ideas, meet <span>intelligence.</span></h1>
+          <p class="hero-copy">A chill coding buddy for building, debugging, and figuring things out.<br>Let's make it work.</p>
+          <div class="suggestions">
+            <button class="suggestion" data-prompt="Teach me C++ basics with a structured lesson, examples, tables, and syntax-highlighted code."><span class="suggestion-icon purple">⌘</span><span><strong>Learn something</strong><small>Explain a complex topic clearly</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion" data-prompt="Help me design a beautiful, modern web interface. Give me a detailed plan and example code."><span class="suggestion-icon blue">◇</span><span><strong>Build a project</strong><small>Turn an idea into a plan</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion" data-prompt="Help me debug this problem. Identify the likely root cause, show the corrected code, and explain how to verify the fix."><span class="suggestion-icon pink">✳</span><span><strong>Debug an issue</strong><small>Find the cause and fix it</small></span><span class="suggestion-arrow">↗</span></button>
+            <button class="suggestion" data-prompt="Write a practical JSON example, explain each field, and include a formatted table of the key options."><span class="suggestion-icon amber">{ }</span><span><strong>Work with JSON</strong><small>Structure data with confidence</small></span><span class="suggestion-arrow">↗</span></button>
+          </div>
+          <div class="welcome-foot"><span>✧</span> Clean code. Clear answers. No unnecessary lectures.</div>
+        </div>
+        <div class="messages" id="messages" aria-live="polite"></div>
+        <div class="bottom-space"></div>
+      </section>
+
+      <div class="composer-wrap">
+        <div class="composer" id="composer">
+          <textarea id="promptInput" rows="1" placeholder="Message Shadow AI…  (Enter to send, Shift + Enter for a new line)" aria-label="Message Shadow AI"></textarea>
+          <div class="composer-bottom">
+            <div class="composer-tools"><button class="tool-btn" id="attachJson" title="Insert JSON template">{ } <span>JSON</span></button><span class="tool-divider"></span><span class="code-mode-label">⌘ Code-first</span></div>
+            <div class="composer-right"><span class="char-count" id="charCount">0</span><button class="send-btn" id="sendBtn" aria-label="Send message"><span id="sendIcon">↑</span></button></div>
+          </div>
+        </div>
+        <div class="composer-disclaimer">Shadow AI can make mistakes. Verify important information. <span>·</span> <button id="openSettingsInline">Tune model ↗</button></div>
+      </div>
+    </main>
+
+    <aside class="inspector-panel" id="inspectorPanel">
+      <div class="inspector-head"><div><div class="panel-kicker">DEVELOPER TOOLS</div><h2>JSON inspector</h2></div><button class="icon-btn" id="closeInspector" title="Close inspector">×</button></div>
+      <p class="inspector-desc">See the exact payload sent to the local Node proxy and inspect streamed events.</p>
+      <div class="inspector-tabs"><button class="inspector-tab active" data-tab="request">Request JSON</button><button class="inspector-tab" data-tab="response">Stream events</button></div>
+      <div class="json-toolbar"><span id="jsonState">Waiting for request</span><button id="copyJson" class="subtle-btn">Copy JSON</button></div>
+      <pre class="json-view" id="jsonView"><code>{
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "messages": [],
+  "stream": true,
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  }
+}</code></pre>
+      <div class="inspector-bottom"><div class="mini-status"><span class="pulse"></span><span>LOCAL PROXY</span></div><span>127.0.0.1:3210</span></div>
+    </aside>
+  </div>
+
+  <div class="modal-backdrop" id="settingsModal" aria-hidden="true">
+    <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head"><div><div class="panel-kicker">MODEL CONFIGURATION</div><h2 id="settingsTitle">Fine-tune the response</h2><p>These values are sent as JSON with each request.</p></div><button class="icon-btn" id="closeSettings" aria-label="Close settings">×</button></div>
+      <div class="settings-grid">
+        <label class="setting-card"><span class="setting-label">Temperature <b id="temperatureValue">0.70</b></span><small>Creativity and variation</small><input id="temperature" type="range" min="0" max="2" step="0.05" value="0.7"></label>
+        <label class="setting-card"><span class="setting-label">Top-p <b id="topPValue">0.95</b></span><small>Token sampling range</small><input id="topP" type="range" min="0.1" max="1" step="0.01" value="0.95"></label>
+        <label class="setting-card"><span class="setting-label">Max tokens</span><small>Maximum response length</small><select id="maxTokens"><option value="1024">1,024 · Short</option><option value="2048">2,048 · Medium</option><option value="4096" selected>4,096 · Long</option><option value="8192">8,192 · Very long</option><option value="16384">16,384 · Maximum</option></select></label>
+      </div>
+      <label class="setting-card system-prompt"><span class="setting-label">System prompt</span><small>Guidance that applies to the conversation</small><textarea id="systemPrompt" rows="7">You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
+
+For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
+
+Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
+
+Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.</textarea></label>
+      <div class="modal-actions"><button class="subtle-btn" id="resetSettings">Reset defaults</button><button class="primary-btn" id="saveSettings">Save configuration <span>↗</span></button></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+</body>
+</html>
