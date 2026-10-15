@@ -98,17 +98,10 @@
     <section class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <div class="modal-head"><div><div class="panel-kicker">MODEL CONFIGURATION</div><h2 id="settingsTitle">Fine-tune the response</h2><p>These values are sent as JSON with each request.</p></div><button class="icon-btn" id="closeSettings" aria-label="Close settings">×</button></div>
       <div class="settings-grid">
-        <label class="setting-card"><span class="setting-label">Temperature <b id="temperatureValue">0.70</b></span><small>Creativity and variation</small><input id="temperature" type="range" min="0" max="2" step="0.05" value="0.7"></label>
-        <label class="setting-card"><span class="setting-label">Top-p <b id="topPValue">0.95</b></span><small>Token sampling range</small><input id="topP" type="range" min="0.1" max="1" step="0.01" value="0.95"></label>
-        <label class="setting-card"><span class="setting-label">Max tokens</span><small>Maximum response length</small><select id="maxTokens"><option value="1024">1,024 · Short</option><option value="2048">2,048 · Medium</option><option value="4096" selected>4,096 · Long</option><option value="8192">8,192 · Very long</option><option value="16384">16,384 · Maximum</option></select></label>
+        <label class="setting-card"><span class="setting-label">Temperature <b id="temperatureValue">0.40</b></span><small>Creativity and variation</small><input id="temperature" type="range" min="0" max="2" step="0.05" value="0.4"></label>
+        <label class="setting-card"><span class="setting-label">Top-p <b id="topPValue">0.90</b></span><small>Token sampling range</small><input id="topP" type="range" min="0.1" max="1" step="0.01" value="0.9"></label>
+        <label class="setting-card"><span class="setting-label">Max tokens</span><small>Maximum response length</small><select id="maxTokens"><option value="1024">1,024 · Short</option><option value="2048">2,048 · Medium</option><option value="4096">4,096 · Long</option><option value="8192" selected>8,192 · Very long</option><option value="16384">16,384 · Maximum</option></select></label>
       </div>
-      <label class="setting-card system-prompt"><span class="setting-label">System prompt</span><small>Guidance that applies to the conversation</small><textarea id="systemPrompt" rows="7">You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
-
-For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
-
-Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
-
-Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.</textarea></label>
       <div class="modal-actions"><button class="subtle-btn" id="resetSettings">Reset defaults</button><button class="primary-btn" id="saveSettings">Save configuration <span>↗</span></button></div>
     </section>
   </div>

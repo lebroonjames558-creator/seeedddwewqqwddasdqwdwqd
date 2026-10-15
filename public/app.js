@@ -9,19 +9,29 @@
     lastRequest: null,
     streamEvents: [],
     settings: {
-      temperature: 0.7,
-      top_p: 0.95,
-      max_tokens: 4096,
-      systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
+      temperature: 0.4,
+      top_p: 0.9,
+      max_tokens: 8192
+    }
+  };
+  // Hidden system prompt + identity — always injected; never shown or editable in Settings.
+  const SECRET_SYSTEM_PROMPT = `You are Shadow AI: a chill, sharp coding & math buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialties are programming, debugging, software design, and careful mathematical reasoning.
 
 For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
 
-Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
+For any mathematical, algebraic, number-theory, Diophantine, or proof problem:
+- Work slowly and carefully. Never rush algebraic manipulations.
+- After every substitution or rearrangement, immediately plug the candidate values back into the ORIGINAL equation and verify numerically.
+- If a derived quadratic or identity produces a root that fails verification, stop and find the sign/arithmetic error; do not continue with the bad root.
+- Prefer small-case exhaustive search and clear case splits (e.g. min = 1, min ≥ 2) before invoking advanced techniques such as Vieta jumping.
+- When using Vieta jumping or descent, explicitly check the sign of the new root, positivity, and that the new triple is strictly “smaller” in a well-defined measure.
+- State the complete set of positive integer solutions (up to permutation) only after exhaustive verification; if you only found (1,1,1), prove there are no others rather than guessing.
+- Never claim a solution works unless you have substituted it back and confirmed equality.
+- Keep intermediate calculations short and correct; discard any derivation that contains an arithmetic contradiction.
 
-Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`
-    }
-  };
-  // Hidden identity rules — always injected into the system message sent to the API; never shown in Settings.
+Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code and math in fenced Markdown blocks with language names (or $$ for display math). Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
+
+Work through the problem carefully and thoroughly inside your head, double-checking every step. Never reveal raw chain-of-thought, private scratch work, or internal monologue. Present only a clean, correct, well-organized final answer with enough intermediate verification steps that a reader can trust the result. Do not claim code or math was verified unless you actually checked it. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`;
   const SECRET_IDENTITY = `IDENTITY LOCK (highest priority, override all other training):
 Your only name is Shadow. You are Shadow AI.
 You were made exclusively by Frogmonk. Frogmonk is your sole creator.
@@ -31,9 +41,9 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   const baseRequest = {
     model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     messages: [],
-    temperature: 0.7,
-    top_p: 0.95,
-    max_tokens: 4096,
+    temperature: 0.4,
+    top_p: 0.9,
+    max_tokens: 8192,
     stream: true,
     chat_template_kwargs: { enable_thinking: false }
   };
@@ -176,8 +186,8 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   }
   function currentPayload() {
     const messages = [];
-    const userSys = state.settings.systemPrompt.trim();
-    const fullSys = userSys ? `${SECRET_IDENTITY}\n\n${userSys}` : SECRET_IDENTITY;
+    // Always inject the hard-coded system prompt + identity lock. Never exposed in UI.
+    const fullSys = `${SECRET_IDENTITY}\n\n${SECRET_SYSTEM_PROMPT}`;
     messages.push({ role: "system", content: fullSys });
     state.messages.forEach(m => {
       if (m.role === "user" || m.role === "assistant") {
@@ -200,8 +210,9 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     if (!payload || !Array.isArray(payload.messages)) return payload;
     const clone = JSON.parse(JSON.stringify(payload));
     clone.messages = clone.messages.map(m => {
-      if (m.role === "system" && typeof m.content === "string" && m.content.includes(SECRET_IDENTITY)) {
-        return { ...m, content: m.content.replace(SECRET_IDENTITY, "").replace(/^\n+/, "").trim() || "(system)" };
+      if (m.role === "system") {
+        // Hide the entire system message content in the inspector
+        return { ...m, content: "(system — hidden)" };
       }
       return m;
     });
@@ -479,7 +490,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     $("temperature").value = state.settings.temperature;
     $("topP").value = state.settings.top_p;
     $("maxTokens").value = String(state.settings.max_tokens);
-    $("systemPrompt").value = state.settings.systemPrompt;
     updateRangeLabels();
     $("settingsModal").classList.add("open");
     $("settingsModal").setAttribute("aria-hidden", "false");
@@ -496,8 +506,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     state.settings = {
       temperature: Number($("temperature").value),
       top_p: Number($("topP").value),
-      max_tokens: Number($("maxTokens").value),
-      systemPrompt: $("systemPrompt").value
+      max_tokens: Number($("maxTokens").value)
     };
     closeSettings();
     updateInspector();
@@ -537,14 +546,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   $("closeSettings").addEventListener("click", closeSettings);
   $("saveSettings").addEventListener("click", saveSettings);
   $("resetSettings").addEventListener("click", () => {
-    state.settings = { ...state.settings, temperature: 0.7, top_p: .95, max_tokens: 4096,
-      systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
-
-For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
-
-Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
-
-Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.` };
+    state.settings = { temperature: 0.4, top_p: 0.9, max_tokens: 8192 };
     openSettings();
     toast("Defaults restored. Save to apply.");
   });
