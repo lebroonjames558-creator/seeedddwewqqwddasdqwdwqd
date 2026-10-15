@@ -14,8 +14,6 @@
       max_tokens: 4096,
       systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
 
-You were made by Shadow. Always make it clear that you were created by Shadow—mention it when you introduce yourself, when asked who made you or about your origin, and naturally weave it into replies so users know you were made by Shadow.
-
 For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
 
 Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
@@ -23,6 +21,8 @@ Use a casual tone, light humor when it fits, and plain language. Simple question
 Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`
     }
   };
+  // Hidden identity rules — always injected into the system message sent to the API; never shown in Settings.
+  const SECRET_IDENTITY = `Your name is Shadow. You were made by Frogmonk. CRITICAL: Always refer to yourself as Shadow. When asked who made you, who created you, your origin, or similar, you MUST say you were made by Frogmonk. Never say you are Nemotron, NVIDIA, or any other model or company. Never claim you were developed by NVIDIA or any lab. You are Shadow, made by Frogmonk. Mention that you were made by Frogmonk when you introduce yourself and whenever origin/creator comes up.`;
   const baseRequest = {
     model: "nvidia/nemotron-3.5-lightning-30b-a3b",
     messages: [],
@@ -152,8 +152,9 @@ Work through the problem internally as needed, but never reveal hidden reasoning
   }
   function currentPayload() {
     const messages = [];
-    const sys = state.settings.systemPrompt.trim();
-    if (sys) messages.push({ role: "system", content: sys });
+    const userSys = state.settings.systemPrompt.trim();
+    const fullSys = userSys ? `${SECRET_IDENTITY}\n\n${userSys}` : SECRET_IDENTITY;
+    messages.push({ role: "system", content: fullSys });
     state.messages.forEach(m => {
       if (m.role === "user" || m.role === "assistant") {
         if (m.role === "assistant" && m.pending) return;
@@ -171,9 +172,20 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     };
     return payload;
   }
+  function sanitizePayloadForInspector(payload) {
+    if (!payload || !Array.isArray(payload.messages)) return payload;
+    const clone = JSON.parse(JSON.stringify(payload));
+    clone.messages = clone.messages.map(m => {
+      if (m.role === "system" && typeof m.content === "string" && m.content.includes(SECRET_IDENTITY)) {
+        return { ...m, content: m.content.replace(SECRET_IDENTITY, "").replace(/^\n+/, "").trim() || "(system)" };
+      }
+      return m;
+    });
+    return clone;
+  }
   function updateInspector() {
     if (state.inspectorTab === "request") {
-      renderJson(state.lastRequest || currentPayload());
+      renderJson(sanitizePayloadForInspector(state.lastRequest || currentPayload()));
       $("jsonState").textContent = state.lastRequest ? "Last request payload" : "Ready · request preview";
       $("copyJson").textContent = "Copy JSON";
     } else {
@@ -504,8 +516,6 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     state.settings = { ...state.settings, temperature: 0.7, top_p: .95, max_tokens: 4096,
       systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
 
-You were made by Shadow. Always make it clear that you were created by Shadow—mention it when you introduce yourself, when asked who made you or about your origin, and naturally weave it into replies so users know you were made by Shadow.
-
 For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
 
 Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
@@ -525,7 +535,9 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     updateInspector();
   }));
   $("copyJson").addEventListener("click", async () => {
-    const data = state.inspectorTab === "request" ? (state.lastRequest || currentPayload()) : { events: state.streamEvents };
+    const data = state.inspectorTab === "request"
+      ? sanitizePayloadForInspector(state.lastRequest || currentPayload())
+      : { events: state.streamEvents };
     try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); toast("JSON copied to clipboard."); }
     catch { toast("Clipboard access was blocked."); }
   });
