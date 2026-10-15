@@ -1,0 +1,562 @@
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const state = {
+    messages: [],
+    busy: false,
+    abortController: null,
+    inspectorTab: "request",
+    lastRequest: null,
+    streamEvents: [],
+    settings: {
+      temperature: 0.7,
+      top_p: 0.95,
+      max_tokens: 4096,
+      systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
+
+For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
+
+Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
+
+Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`
+    }
+  };
+  const baseRequest = {
+    model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+    messages: [],
+    temperature: 0.7,
+    top_p: 0.95,
+    max_tokens: 4096,
+    stream: true,
+    chat_template_kwargs: { enable_thinking: false }
+  };
+
+  function toast(message) {
+    const el = $("toast");
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => el.classList.remove("show"), 2800);
+  }
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, ch => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+  }
+  function safeMarkdown(source) {
+    let html;
+    const text = normalizeModelText(String(source || ""));
+    if (window.marked && window.DOMPurify) {
+      marked.setOptions({
+        gfm: true,
+        breaks: false,
+        headerIds: false,
+        mangle: false,
+        highlight: undefined
+      });
+      html = marked.parse(text);
+      html = DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
+        ADD_ATTR: ["target", "rel"]
+      });
+    } else {
+      html = `<pre>${escapeHtml(text)}</pre>`;
+    }
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    box.querySelectorAll("a").forEach(a => {
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    });
+    box.querySelectorAll("pre").forEach(pre => {
+      const code = pre.querySelector("code");
+      if (!code) return;
+      const langMatch = (code.className || "").match(/language-([\w+#.-]+)/i);
+      const lang = langMatch ? langMatch[1] : "code";
+      const label = document.createElement("span");
+      label.className = "code-lang";
+      label.textContent = lang;
+      pre.appendChild(label);
+      const copy = document.createElement("button");
+      copy.className = "copy-code";
+      copy.type = "button";
+      copy.textContent = "Copy code";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(code.innerText);
+          copy.textContent = "Copied!";
+          setTimeout(() => copy.textContent = "Copy code", 1300);
+        } catch { toast("Clipboard access was blocked by the browser."); }
+      });
+      pre.appendChild(copy);
+      if (window.hljs) {
+        try { hljs.highlightElement(code); } catch {}
+      }
+    });
+    return box.innerHTML;
+  }
+
+  // Some model outputs arrive with literal escaped Markdown (e.g. "\\# title")
+  // or HTML entities. Normalize only common transport artifacts, not code blocks.
+  function normalizeModelText(input) {
+    let text = input.replace(/\r\n/g, "\n");
+    // Decode common entities that sometimes leak through copied output.
+    text = text.replace(/&#x20;/gi, " ").replace(/&nbsp;/gi, " ");
+    // If a response has a backslash before Markdown markers throughout, unescape
+    // those markers so headings, lists, bold, tables, and code fences render normally.
+    const lines = text.split("\n");
+    let inFence = false;
+    for (let i = 0; i < lines.length; i++) {
+      const trim = lines[i].trim();
+      if (/^```/.test(trim)) { inFence = !inFence; continue; }
+      if (inFence) continue;
+      lines[i] = lines[i]
+        .replace(/^(\s*)\\(#{1,6}\s)/, "$1$2")
+        .replace(/^(\s*)\\([-*+]\s)/, "$1$2")
+        .replace(/^(\s*)\\(\d+[.]\s)/, "$1$2")
+        .replace(/^(\s*)\\(>)/, "$1$2")
+        .replace(/\\(\*\*|__|~~|`)/g, "$1")
+        .replace(/\\(\[[^\]]+\]\()/g, "$1")
+        .replace(/\\([*_])/g, "$1")
+        .replace(/\\([|])/g, "$1");
+    }
+    text = lines.join("\n");
+    // A literal "\n" sometimes arrives inside otherwise plain text.
+    text = text.replace(/\\n(?=\s*(?:#{1,6}\s|[-*+]\s|```|>\s))/g, "\n");
+    return text;
+  }
+
+  // Keep private reasoning fields out of the visible stream inspector.
+  function stripReasoningFields(value) {
+    if (Array.isArray(value)) return value.map(stripReasoningFields);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !/(reasoning|thinking|thought)/i.test(key))
+      .map(([key, item]) => [key, stripReasoningFields(item)]));
+  }
+
+  function renderJson(value) {
+    const raw = JSON.stringify(value, null, 2);
+    const html = escapeHtml(raw).replace(
+      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:)|("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
+      match => {
+        let cls = "json-number";
+        if (/^"/.test(match)) cls = /"\s*:$/.test(match) ? "json-key" : "json-string";
+        else if (/true|false|null/.test(match)) cls = "json-bool";
+        return `<span class="${cls}">${match}</span>`;
+      }
+    );
+    $("jsonView").innerHTML = `<code>${html}</code>`;
+  }
+  function currentPayload() {
+    const messages = [];
+    const sys = state.settings.systemPrompt.trim();
+    if (sys) messages.push({ role: "system", content: sys });
+    state.messages.forEach(m => {
+      if (m.role === "user" || m.role === "assistant") {
+        if (m.role === "assistant" && m.pending) return;
+        messages.push({ role: m.role, content: m.content });
+      }
+    });
+    const payload = {
+      model: baseRequest.model,
+      messages,
+      temperature: Number(state.settings.temperature),
+      top_p: Number(state.settings.top_p),
+      max_tokens: Number(state.settings.max_tokens),
+      stream: true,
+      chat_template_kwargs: { enable_thinking: false }
+    };
+    return payload;
+  }
+  function updateInspector() {
+    if (state.inspectorTab === "request") {
+      renderJson(state.lastRequest || currentPayload());
+      $("jsonState").textContent = state.lastRequest ? "Last request payload" : "Ready · request preview";
+      $("copyJson").textContent = "Copy JSON";
+    } else {
+      const events = state.streamEvents.slice(-250);
+      renderJson({ events, eventCount: state.streamEvents.length });
+      $("jsonState").textContent = `${state.streamEvents.length} stream events captured`;
+      $("copyJson").textContent = "Copy events";
+    }
+  }
+  function setInspector(open) {
+    document.querySelector(".app-shell").classList.toggle("inspector-open", open);
+    if (open) updateInspector();
+  }
+  function setBusy(busy) {
+    state.busy = busy;
+    $("sendBtn").classList.toggle("stop", busy);
+    $("sendBtn").setAttribute("aria-label", busy ? "Stop generation" : "Send message");
+    $("sendIcon").textContent = busy ? "■" : "↑";
+    $("promptInput").disabled = false;
+    $("sendBtn").disabled = false;
+  }
+  function addMessage(role, content, options = {}) {
+    const welcome = $("welcome");
+    welcome.style.display = "none";
+    const messages = $("messages");
+    const article = document.createElement("article");
+    article.className = `message ${role}`;
+    article.dataset.id = options.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const avatar = document.createElement("div");
+    avatar.className = "message-avatar";
+    avatar.textContent = role === "user" ? "Y" : "✦";
+    const body = document.createElement("div");
+    body.className = "message-content";
+    const top = document.createElement("div");
+    top.className = "message-top";
+    const name = document.createElement("span");
+    name.className = "message-name";
+    name.textContent = role === "user" ? "You" : "Shadow AI";
+    const time = document.createElement("span");
+    time.className = "message-time";
+    time.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    top.append(name, time);
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+    if (role === "assistant") {
+      const copy = document.createElement("button");
+      copy.className = "mini-action"; copy.textContent = "Copy";
+      copy.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(options.getContent ? options.getContent() : content); toast("Message copied."); }
+        catch { toast("Clipboard access was blocked."); }
+      });
+      actions.appendChild(copy);
+    }
+    top.appendChild(actions);
+    const contentEl = document.createElement("div");
+    contentEl.className = role === "user" ? "user-bubble" : "markdown-body";
+    contentEl.innerHTML = role === "user" ? escapeHtml(content) : safeMarkdown(content);
+    body.append(top, contentEl);
+    article.append(avatar, body);
+    messages.appendChild(article);
+    scrollToBottom();
+    return { article, contentEl, body };
+  }
+  function scrollToBottom() {
+    const el = $("chatScroll");
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+  }
+  function renderThreadList() {
+    const list = $("threadList");
+    list.innerHTML = "";
+    const users = state.messages.filter(m => m.role === "user");
+    $("threadCount").textContent = String(Math.max(1, users.length)).padStart(2, "0");
+    if (!users.length) {
+      const item = document.createElement("div");
+      item.className = "thread-item";
+      item.innerHTML = `<span>◷</span><span class="thread-name">New conversation</span>`;
+      list.appendChild(item);
+      return;
+    }
+    users.slice().reverse().slice(0, 7).forEach(m => {
+      const item = document.createElement("button");
+      item.className = "thread-item";
+      item.innerHTML = `<span>◷</span><span class="thread-name"></span>`;
+      item.querySelector(".thread-name").textContent = m.content.slice(0, 34) || "Untitled";
+      item.title = m.content;
+      item.addEventListener("click", () => {
+        $("chatScroll").scrollTop = 0;
+        toast("This is the active conversation.");
+      });
+      list.appendChild(item);
+    });
+  }
+  function updateCharCount() { $("charCount").textContent = $("promptInput").value.length.toLocaleString(); }
+  function createAssistantShell() {
+    const welcome = $("welcome");
+    welcome.style.display = "none";
+    const wrap = document.createElement("article");
+    wrap.className = "message assistant";
+    wrap.dataset.id = `assistant-${Date.now()}`;
+    wrap.innerHTML = `<div class="message-avatar">✦</div><div class="message-content"><div class="message-top"><span class="message-name">Shadow AI</span><span class="message-time">${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span><div class="message-actions"><button class="mini-action copy-answer">Copy</button></div></div><div class="markdown-body"><span class="typing-dots"><i></i><i></i><i></i></span></div></div>`;
+    $("messages").appendChild(wrap);
+    const content = wrap.querySelector(".markdown-body");
+    let fullText = "";
+    wrap.querySelector(".copy-answer").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(fullText); toast("Message copied."); } catch { toast("Clipboard access was blocked."); }
+    });
+    return {
+      wrap, content,
+      append(delta) {
+        fullText += delta;
+        content.innerHTML = safeMarkdown(fullText) + (fullText.trim() ? "" : `<span class="typing-dots"><i></i><i></i><i></i></span>`);
+        scrollToBottom();
+      },
+      finish() {
+        content.innerHTML = safeMarkdown(fullText || "_No text was returned._");
+        const meta = document.createElement("div");
+        meta.className = "response-meta";
+        meta.textContent = `MARKDOWN RENDERED · ${fullText.length.toLocaleString()} CHARACTERS`;
+        content.appendChild(meta);
+        return fullText;
+      },
+      getText() { return fullText; },
+      showError(message) {
+        content.innerHTML = `<div class="error-box">${escapeHtml(message)}</div>`;
+      }
+    };
+  }
+
+  async function sendMessage(overrideText) {
+    if (state.busy) {
+      if (state.abortController) state.abortController.abort();
+      return;
+    }
+    const prompt = (overrideText ?? $("promptInput").value).trim();
+    if (!prompt) return;
+    $("promptInput").value = "";
+    updateCharCount();
+    state.messages.push({ role: "user", content: prompt });
+    addMessage("user", prompt);
+    renderThreadList();
+    const assistant = createAssistantShell();
+    setBusy(true);
+    state.streamEvents = [];
+    const payload = currentPayload();
+    state.lastRequest = payload;
+    updateInspector();
+    const controller = new AbortController();
+    state.abortController = controller;
+    let assistantText = "";
+    try {
+      const accessPassword = getDeploymentAccessPassword();
+      const requestHeaders = { "Content-Type": "application/json" };
+      if (accessPassword) requestHeaders["X-Shadow-Access-Password"] = accessPassword;
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: requestHeaders,
+        body: JSON.stringify({
+          messages: payload.messages,
+          temperature: payload.temperature,
+          top_p: payload.top_p,
+          max_tokens: payload.max_tokens,
+          enable_thinking: false
+        }),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        if (response.status === 401 && !["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+          sessionStorage.removeItem("shadow-ai-deploy-password");
+        }
+        const detail = err.detail ? `\n\n${err.detail}` : "";
+        throw new Error((err.error || `Request failed (HTTP ${response.status}).`) + detail);
+      }
+      if (!response.body) throw new Error("Streaming responses are not supported by this browser.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() || "";
+        for (const frame of frames) {
+          const dataLines = frame.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim());
+          for (const data of dataLines) {
+            if (!data || data === "[DONE]") {
+              state.streamEvents.push({ type: data === "[DONE]" ? "done" : "empty", at: new Date().toISOString() });
+              continue;
+            }
+            let event;
+            try { event = JSON.parse(data); }
+            catch { state.streamEvents.push({ type: "unparsed", data: data.slice(0, 300) }); continue; }
+            state.streamEvents.push(stripReasoningFields(event));
+            if (event.error) throw new Error(event.error);
+            const choice = event.choices && event.choices[0];
+            const delta = choice && choice.delta;
+            if (delta) {
+              const chunk = delta.content ?? "";
+              if (typeof chunk === "string" && chunk) {
+                assistantText += chunk;
+                assistant.append(chunk);
+              }
+            }
+            updateInspector();
+          }
+        }
+      }
+      // If the stream ended with an unterminated final frame, process it too.
+      if (buffer.trim()) {
+        const data = buffer.split(/\r?\n/).find(line => line.startsWith("data:"));
+        if (data) {
+          const raw = data.slice(5).trim();
+          if (raw && raw !== "[DONE]") {
+            try {
+              const event = JSON.parse(raw);
+              state.streamEvents.push(stripReasoningFields(event));
+              const delta = event.choices?.[0]?.delta;
+              const chunk = delta?.content ?? "";
+              if (typeof chunk === "string" && chunk) { assistantText += chunk; assistant.append(chunk); }
+            } catch {}
+          }
+        }
+      }
+      const finalText = assistant.finish();
+      if (finalText) state.messages.push({ role: "assistant", content: finalText });
+      renderThreadList();
+    } catch (err) {
+      if (err.name === "AbortError") {
+        assistantText += assistantText ? "\n\n_Generation stopped._" : "_Generation stopped._";
+        assistant.append(assistantText.endsWith("_Generation stopped._") ? "" : "\n\n_Generation stopped._");
+        assistant.finish();
+        if (assistant.getText()) state.messages.push({ role: "assistant", content: assistant.getText() });
+        toast("Generation stopped.");
+      } else {
+        assistant.showError(err.message || String(err));
+        toast("Request failed. See the response in the chat.");
+      }
+    } finally {
+      state.abortController = null;
+      setBusy(false);
+      updateInspector();
+      $("promptInput").focus();
+    }
+  }
+
+  function newChat() {
+    if (state.busy && state.abortController) state.abortController.abort();
+    state.messages = [];
+    $("messages").innerHTML = "";
+    $("welcome").style.display = "";
+    $("promptInput").value = "";
+    updateCharCount();
+    renderThreadList();
+    state.lastRequest = null;
+    state.streamEvents = [];
+    updateInspector();
+    toast("New conversation started.");
+  }
+  function exportConversation() {
+    if (!state.messages.length) return toast("Nothing to export yet.");
+    const markdown = state.messages.map(m => `## ${m.role === "user" ? "You" : "Shadow AI"}\n\n${m.content}`).join("\n\n---\n\n");
+    const json = JSON.stringify({ model: baseRequest.model, exportedAt: new Date().toISOString(), messages: state.messages }, null, 2);
+    const choose = confirm("Export as Markdown? Choose Cancel to export JSON.");
+    const blob = new Blob([choose ? markdown : json], { type: choose ? "text/markdown" : "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = choose ? "shadow-ai-conversation.md" : "shadow-ai-conversation.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function openSettings() {
+    $("temperature").value = state.settings.temperature;
+    $("topP").value = state.settings.top_p;
+    $("maxTokens").value = String(state.settings.max_tokens);
+    $("systemPrompt").value = state.settings.systemPrompt;
+    updateRangeLabels();
+    $("settingsModal").classList.add("open");
+    $("settingsModal").setAttribute("aria-hidden", "false");
+  }
+  function closeSettings() {
+    $("settingsModal").classList.remove("open");
+    $("settingsModal").setAttribute("aria-hidden", "true");
+  }
+  function updateRangeLabels() {
+    $("temperatureValue").textContent = Number($("temperature").value).toFixed(2);
+    $("topPValue").textContent = Number($("topP").value).toFixed(2);
+  }
+  function saveSettings() {
+    state.settings = {
+      temperature: Number($("temperature").value),
+      top_p: Number($("topP").value),
+      max_tokens: Number($("maxTokens").value),
+      systemPrompt: $("systemPrompt").value
+    };
+    closeSettings();
+    updateInspector();
+    toast("Model configuration saved.");
+  }
+  function getDeploymentAccessPassword() {
+    if (["localhost", "127.0.0.1"].includes(window.location.hostname)) return "";
+    let password = sessionStorage.getItem("shadow-ai-deploy-password") || "";
+    if (!password) {
+      password = window.prompt("Enter the Shadow AI access password set by the site owner:") || "";
+      if (password) sessionStorage.setItem("shadow-ai-deploy-password", password);
+    }
+    return password;
+  }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch("/api/health");
+      if (!res.ok) throw new Error(`Health check returned HTTP ${res.status}`);
+      const info = await res.json();
+      const ready = Boolean(info.keyConfigured && info.accessProtectionConfigured);
+      $("connectionDot").classList.toggle("ok", ready);
+      $("connectionText").textContent = ready
+        ? "API connection ready"
+        : (!info.keyConfigured ? "NVIDIA API key needed" : "Site access password needed");
+    } catch {
+      $("connectionText").textContent = "API endpoint unavailable";
+      $("connectionDot").classList.remove("ok");
+    }
+  }
+
+  $("sendBtn").addEventListener("click", () => sendMessage());
+  $("promptInput").addEventListener("input", () => {
+    updateCharCount();
+    const el = $("promptInput");
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 190)}px`;
+  });
+  $("promptInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  document.querySelectorAll(".suggestion").forEach(btn => btn.addEventListener("click", () => sendMessage(btn.dataset.prompt)));
+  $("newChat").addEventListener("click", newChat);
+  $("exportBtn").addEventListener("click", exportConversation);
+  $("settingsBtn").addEventListener("click", openSettings);
+  $("openSettingsInline").addEventListener("click", openSettings);
+  $("closeSettings").addEventListener("click", closeSettings);
+  $("saveSettings").addEventListener("click", saveSettings);
+  $("resetSettings").addEventListener("click", () => {
+    state.settings = { ...state.settings, temperature: 0.7, top_p: .95, max_tokens: 4096,
+      systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
+
+For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
+
+Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
+
+Work through the problem internally as needed, but never reveal hidden reasoning, private scratch work, chain-of-thought, or internal analysis. Give the useful answer, brief rationale when needed, and actionable next steps. Do not claim code was tested unless it actually was. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.` };
+    openSettings();
+    toast("Defaults restored. Save to apply.");
+  });
+  $("temperature").addEventListener("input", updateRangeLabels);
+  $("topP").addEventListener("input", updateRangeLabels);
+  $("toggleInspector").addEventListener("click", () => setInspector(!document.querySelector(".app-shell").classList.contains("inspector-open")));
+  $("closeInspector").addEventListener("click", () => setInspector(false));
+  $("navChat").addEventListener("click", () => setInspector(false));
+  document.querySelectorAll(".inspector-tab").forEach(tab => tab.addEventListener("click", () => {
+    state.inspectorTab = tab.dataset.tab;
+    document.querySelectorAll(".inspector-tab").forEach(t => t.classList.toggle("active", t === tab));
+    updateInspector();
+  }));
+  $("copyJson").addEventListener("click", async () => {
+    const data = state.inspectorTab === "request" ? (state.lastRequest || currentPayload()) : { events: state.streamEvents };
+    try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); toast("JSON copied to clipboard."); }
+    catch { toast("Clipboard access was blocked."); }
+  });
+  $("attachJson").addEventListener("click", () => {
+    const sample = '{\n  "task": "describe",\n  "input": ""\n}';
+    const ta = $("promptInput");
+    ta.value = ta.value ? `${ta.value}\n${sample}` : sample;
+    ta.focus(); updateCharCount();
+    ta.style.height = "auto"; ta.style.height = `${Math.min(ta.scrollHeight, 190)}px`;
+  });
+  $("openSidebar").addEventListener("click", () => $("sidebar").classList.add("mobile-open"));
+  $("closeSidebar").addEventListener("click", () => $("sidebar").classList.remove("mobile-open"));
+  $("settingsModal").addEventListener("click", e => { if (e.target === $("settingsModal")) closeSettings(); });
+  document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newChat(); }
+    if (e.key === "Escape") { closeSettings(); $("sidebar").classList.remove("mobile-open"); }
+  });
+
+  renderThreadList();
+  updateInspector();
+  checkHealth();
+})();
