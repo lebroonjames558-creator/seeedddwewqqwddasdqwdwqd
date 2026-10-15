@@ -204,6 +204,10 @@ kbd { margin-left:auto;font:10px "DM Mono",monospace;color:#8b819f;border:1px so
 .primary-btn span { margin-left:12px; }
 .toast { position:fixed;z-index:20;bottom:22px;left:50%;transform:translate(-50%,20px);opacity:0;pointer-events:none;border:1px solid #bba5ff35;border-radius:9px;padding:11px 15px;background:#211832;color:#e9dfff;font-size:11px;box-shadow:0 10px 40px #0006;transition:.25s;max-width:min(90vw,550px); }
 .toast.show { opacity:1;transform:translate(-50%,0); }
+.tool-bar { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 8px; }
+.tool-bar[hidden] { display:none; }
+.tool-chip { font:10px "DM Mono",monospace; color:#d7c6ff; background:#2a2140; border:1px solid #6d5a96; border-radius:999px; padding:3px 8px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tool-chip.bad { color:#ffb3c0; border-color:#fb718555; background:#3a2030; }
 .error-box { border:1px solid #fb718533;border-radius:9px;background:#fb71830a;color:#ffb3c0;padding:12px 14px;line-height:1.7;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere; }
 .response-meta { margin-top:12px;color:#776b8c;font:9px "DM Mono",monospace; }
 @media (max-width:1200px) { .app-shell.inspector-open { grid-template-columns:220px minmax(360px,1fr) 300px; } .sidebar { padding-left:12px;padding-right:12px; } }

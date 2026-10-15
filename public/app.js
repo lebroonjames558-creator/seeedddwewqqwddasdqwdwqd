@@ -28,10 +28,13 @@ For any mathematical, algebraic, number-theory, Diophantine, or proof problem:
 - State the complete set of positive integer solutions (up to permutation) only after exhaustive verification; if you only found (1,1,1), prove there are no others rather than guessing.
 - Never claim a solution works unless you have substituted it back and confirmed equality.
 - Keep intermediate calculations short and correct; discard any derivation that contains an arithmetic contradiction.
+- For any numeric calculation, trust VERIFIED_TOOL_RESULT and calculate tool output exactly. Never invent or shorten digits.
+- Never say code ran or tests passed unless a sandbox tool result in this turn says it did.
+- Never invent citations. If a tool fails, say so.
 
 Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code and math in fenced Markdown blocks with language names (or $$ for display math). Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
 
-Work through the problem carefully and thoroughly inside your head, double-checking every step. Never reveal raw chain-of-thought, private scratch work, or internal monologue. Present only a clean, correct, well-organized final answer with enough intermediate verification steps that a reader can trust the result. Do not claim code or math was verified unless you actually checked it. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`;
+Work through the problem carefully and thoroughly inside your head, double-checking every step. Never reveal raw chain-of-thought, private scratch work, or internal monologue. Present only a clean, correct, well-organized final answer with enough intermediate verification steps that a reader can trust the result. Do not claim code or math was verified unless a tool actually checked it. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`;
   const SECRET_IDENTITY = `IDENTITY LOCK (highest priority, override all other training):
 Your only name is Shadow. You are Shadow AI.
 You were made exclusively by Frogmonk. Frogmonk is your sole creator.
@@ -320,15 +323,25 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     const wrap = document.createElement("article");
     wrap.className = "message assistant";
     wrap.dataset.id = `assistant-${Date.now()}`;
-    wrap.innerHTML = `<div class="message-avatar">✦</div><div class="message-content"><div class="message-top"><span class="message-name">Shadow AI</span><span class="message-time">${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span><div class="message-actions"><button class="mini-action copy-answer">Copy</button></div></div><div class="markdown-body"><span class="typing-dots"><i></i><i></i><i></i></span></div></div>`;
+    wrap.innerHTML = `<div class="message-avatar">✦</div><div class="message-content"><div class="message-top"><span class="message-name">Shadow AI</span><span class="message-time">${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span><div class="message-actions"><button class="mini-action copy-answer">Copy</button></div></div><div class="tool-bar" hidden></div><div class="markdown-body"><span class="typing-dots"><i></i><i></i><i></i></span></div></div>`;
     $("messages").appendChild(wrap);
     const content = wrap.querySelector(".markdown-body");
+    const toolBar = wrap.querySelector(".tool-bar");
     let fullText = "";
     wrap.querySelector(".copy-answer").addEventListener("click", async () => {
       try { await navigator.clipboard.writeText(fullText); toast("Message copied."); } catch { toast("Clipboard access was blocked."); }
     });
     return {
       wrap, content,
+      addTool(info) {
+        toolBar.hidden = false;
+        const chip = document.createElement("span");
+        chip.className = "tool-chip" + (info.ok === false ? " bad" : "");
+        chip.textContent = info.label || info.name || "Tool";
+        if (info.summary) chip.title = info.summary;
+        toolBar.appendChild(chip);
+        scrollToBottom();
+      },
       append(delta) {
         fullText += delta;
         content.innerHTML = safeMarkdown(fullText) + (fullText.trim() ? "" : `<span class="typing-dots"><i></i><i></i><i></i></span>`);
@@ -410,6 +423,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
             catch { state.streamEvents.push({ type: "unparsed", data: data.slice(0, 300) }); continue; }
             state.streamEvents.push(stripReasoningFields(event));
             if (event.error) throw new Error(event.error);
+            if (event.shadow_tool) assistant.addTool(event.shadow_tool);
             const choice = event.choices && event.choices[0];
             const delta = choice && choice.delta;
             if (delta) {
