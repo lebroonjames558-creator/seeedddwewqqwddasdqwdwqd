@@ -85,9 +85,9 @@ const server = http.createServer(async (req, res) => {
     const payload = {
       model: MODEL,
       messages: cleanMessages,
-      temperature: clamp(input.temperature, 0, 1, 0.7),
-      top_p: clamp(input.top_p, 0, 1, 0.95),
-      max_tokens: Math.round(clamp(input.max_tokens, 1, 16384, 4096)),
+      temperature: clamp(input.temperature, 0, 1, 0.4),
+      top_p: clamp(input.top_p, 0, 1, 0.9),
+      max_tokens: Math.round(clamp(input.max_tokens, 1, 16384, 8192)),
       stream: true,
       // Disable the model's explicit reasoning trace; show only the final answer.
       chat_template_kwargs: { enable_thinking: false }
