@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
-
 const MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
 const API_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 
@@ -19,24 +17,11 @@ function clamp(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-function secureEqual(left, right) {
-  const a = Buffer.from(String(left));
-  const b = Buffer.from(String(right));
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export default async function handler(request) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const apiKey = process.env.NVIDIA_API_KEY;
-  const accessPassword = process.env.SHADOW_AI_ACCESS_PASSWORD;
   if (!apiKey) return json({ error: "The site owner must set NVIDIA_API_KEY in Netlify environment variables." }, 503);
-  if (!accessPassword) return json({ error: "The site owner must set SHADOW_AI_ACCESS_PASSWORD in Netlify environment variables." }, 503);
-
-  const submittedPassword = request.headers.get("x-shadow-access-password") || "";
-  if (!secureEqual(submittedPassword, accessPassword)) {
-    return json({ error: "Access password is incorrect. Try again." }, 401);
-  }
 
   let input;
   try {

@@ -5,7 +5,7 @@ export default async function handler() {
     ok: true,
     model: MODEL,
     keyConfigured: Boolean(process.env.NVIDIA_API_KEY),
-    accessProtectionConfigured: Boolean(process.env.SHADOW_AI_ACCESS_PASSWORD)
+    accessProtectionConfigured: true
   }, {
     headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }
   });
