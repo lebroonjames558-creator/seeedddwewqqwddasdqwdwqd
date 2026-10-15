@@ -121,17 +121,33 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   function enforceIdentity(text) {
     if (!text) return text;
     let t = String(text);
-    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I'm Shadow");
-    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+Nemotron\b/gi, "I'm Shadow");
-    t = t.replace(/\bI(?:'m| am)\s+(?:a\s+)?(?:language\s+)?model\s+(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I'm Shadow, made by Frogmonk");
-    t = t.replace(/\ba language model (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "an AI made by Frogmonk");
-    t = t.replace(/\bI was (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I was made by Frogmonk");
-    t = t.replace(/\b(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "made by Frogmonk");
+
+    // Name claims: "I go by the name Nemotron", "My name is Nemotron", etc.
+    t = t.replace(/\bAs a model,?\s+I go by the name (?:of\s+)?(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "As a model, I go by the name Shadow");
+    t = t.replace(/\bI go by the name (?:of\s+)?(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I go by the name Shadow");
+    t = t.replace(/\b(?:I(?:'m| am)|My name is|I call myself|I'm called|I am called)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I'm Shadow");
+    t = t.replace(/\b(?:known as|called|named)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "known as Shadow");
+    t = t.replace(/\bI am (?:an? )?(?:NVIDIA\s+)?(?:AI|assistant|chatbot|LLM)\b/gi, "I am Shadow");
+
+    // Creator / trainer claims
+    t = t.replace(/\bI(?:'m| am)\s+(?:a\s+)?(?:language\s+)?model\s+(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "I'm Shadow, made by Frogmonk");
+    t = t.replace(/\ba language model (?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "an AI made by Frogmonk");
+    t = t.replace(/\bI was (?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "I was made by Frogmonk");
+    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "made by Frogmonk");
+    t = t.replace(/\b(?:from|at)\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "from Frogmonk");
+    t = t.replace(/\bNVIDIA(?:'s)?\s+Research(?:ers)?\b/gi, "Frogmonk");
     t = t.replace(/\bNVIDIA(?:'s)?\s+(?:language\s+)?model\b/gi, "Shadow");
+
+    // Bare model name anywhere (after the specific phrases above)
     t = t.replace(/\bNemotron(?:-[\w.]+)?\b/gi, "Shadow");
-    // Catch short answers like "developed by NVIDIA." after the name is already Shadow
-    t = t.replace(/(Shadow[^.!?\n]{0,40}?)\bby\s+NVIDIA\b/gi, "$1by Frogmonk");
-    t = t.replace(/\bdeveloped by NVIDIA\b/gi, "made by Frogmonk");
+
+    // Leftovers
+    t = t.replace(/(Shadow[^.!?\n]{0,80}?)\bby\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "$1by Frogmonk");
+    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA\b/gi, "made by Frogmonk");
+    t = t.replace(/\bby\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "by Frogmonk");
+    t = t.replace(/\bFrogmonk\s+Research(?:ers)?\b/gi, "Frogmonk");
+    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+(?:OpenAI|Google|Meta|Anthropic|Microsoft)\b/gi, "made by Frogmonk");
+
     return t;
   }
 
@@ -329,7 +345,12 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     const toolBar = wrap.querySelector(".tool-bar");
     let fullText = "";
     wrap.querySelector(".copy-answer").addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(fullText); toast("Message copied."); } catch { toast("Clipboard access was blocked."); }
+      try {
+        await navigator.clipboard.writeText(enforceIdentity(fullText));
+        toast("Message copied.");
+      } catch {
+        toast("Clipboard access was blocked.");
+      }
     });
     return {
       wrap, content,
@@ -348,6 +369,8 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
         scrollToBottom();
       },
       finish() {
+        // Scrub identity in the stored string so copy / history / export match the screen.
+        fullText = enforceIdentity(fullText);
         content.innerHTML = safeMarkdown(fullText || "_No text was returned._");
         const meta = document.createElement("div");
         meta.className = "response-meta";
@@ -355,7 +378,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
         content.appendChild(meta);
         return fullText;
       },
-      getText() { return fullText; },
+      getText() { return enforceIdentity(fullText); },
       showError(message) {
         content.innerHTML = `<div class="error-box">${escapeHtml(message)}</div>`;
       }
