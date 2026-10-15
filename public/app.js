@@ -14,6 +14,8 @@
       max_tokens: 4096,
       systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
 
+You were made by Shadow. Always make it clear that you were created by Shadow—mention it when you introduce yourself, when asked who made you or about your origin, and naturally weave it into replies so users know you were made by Shadow.
+
 For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
 
 Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code in fenced Markdown blocks with language names. Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
@@ -322,12 +324,9 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     state.abortController = controller;
     let assistantText = "";
     try {
-      const accessPassword = getDeploymentAccessPassword();
-      const requestHeaders = { "Content-Type": "application/json" };
-      if (accessPassword) requestHeaders["X-Shadow-Access-Password"] = accessPassword;
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: requestHeaders,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: payload.messages,
           temperature: payload.temperature,
@@ -339,9 +338,6 @@ Work through the problem internally as needed, but never reveal hidden reasoning
       });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        if (response.status === 401 && !["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-          sessionStorage.removeItem("shadow-ai-deploy-password");
-        }
         const detail = err.detail ? `\n\n${err.detail}` : "";
         throw new Error((err.error || `Request failed (HTTP ${response.status}).`) + detail);
       }
@@ -471,26 +467,16 @@ Work through the problem internally as needed, but never reveal hidden reasoning
     updateInspector();
     toast("Model configuration saved.");
   }
-  function getDeploymentAccessPassword() {
-    if (["localhost", "127.0.0.1"].includes(window.location.hostname)) return "";
-    let password = sessionStorage.getItem("shadow-ai-deploy-password") || "";
-    if (!password) {
-      password = window.prompt("Enter the Shadow AI access password set by the site owner:") || "";
-      if (password) sessionStorage.setItem("shadow-ai-deploy-password", password);
-    }
-    return password;
-  }
-
   async function checkHealth() {
     try {
       const res = await fetch("/api/health");
       if (!res.ok) throw new Error(`Health check returned HTTP ${res.status}`);
       const info = await res.json();
-      const ready = Boolean(info.keyConfigured && info.accessProtectionConfigured);
+      const ready = Boolean(info.keyConfigured);
       $("connectionDot").classList.toggle("ok", ready);
       $("connectionText").textContent = ready
         ? "API connection ready"
-        : (!info.keyConfigured ? "NVIDIA API key needed" : "Site access password needed");
+        : "NVIDIA API key needed";
     } catch {
       $("connectionText").textContent = "API endpoint unavailable";
       $("connectionDot").classList.remove("ok");
@@ -517,6 +503,8 @@ Work through the problem internally as needed, but never reveal hidden reasoning
   $("resetSettings").addEventListener("click", () => {
     state.settings = { ...state.settings, temperature: 0.7, top_p: .95, max_tokens: 4096,
       systemPrompt: `You are Shadow AI: a chill, sharp coding buddy. Be relaxed, natural, friendly, and direct—never stiff, corporate, overdramatic, or fake-hype. Your specialty is programming, debugging, software design, and helping people build things.
+
+You were made by Shadow. Always make it clear that you were created by Shadow—mention it when you introduce yourself, when asked who made you or about your origin, and naturally weave it into replies so users know you were made by Shadow.
 
 For coding tasks, prioritize working solutions over long lectures. Give complete code that can be pasted into the right file, name the file, mention dependencies or project settings when they matter, and explain exactly how to run it. When debugging, use the actual error message, identify the likely cause, and provide the corrected code—not vague suggestions. Keep existing code and constraints in mind. Prefer clean, reliable, performant solutions and explain trade-offs only when useful.
 
