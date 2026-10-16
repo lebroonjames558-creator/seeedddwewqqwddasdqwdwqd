@@ -28,6 +28,7 @@
       <button class="new-chat" id="newChat"><span class="plus">＋</span> New conversation <kbd>⌘ K</kbd></button>
       <div class="side-label">WORKSPACE</div>
       <button class="nav-item active" id="navChat"><span class="nav-icon">◈</span> Chat <span class="nav-dot"></span></button>
+      <button class="nav-item" id="toggleInspector"><span class="nav-icon">{ }</span> JSON inspector <span class="tiny-pill">LIVE</span></button>
       <div class="side-label recent-label">RECENT THREADS <span id="threadCount">01</span></div>
       <div class="thread-list" id="threadList"></div>
       <div class="sidebar-spacer"></div>
@@ -75,6 +76,22 @@
         <div class="composer-disclaimer">Shadow AI can make mistakes. Verify important information. <span>·</span> <button id="openSettingsInline">Tune model ↗</button></div>
       </div>
     </main>
+
+    <aside class="inspector-panel" id="inspectorPanel">
+      <div class="inspector-head"><div><div class="panel-kicker">DEVELOPER TOOLS</div><h2>JSON inspector</h2></div><button class="icon-btn" id="closeInspector" title="Close inspector">×</button></div>
+      <p class="inspector-desc">See the exact payload sent to the local Node proxy and inspect streamed events.</p>
+      <div class="inspector-tabs"><button class="inspector-tab active" data-tab="request">Request JSON</button><button class="inspector-tab" data-tab="response">Stream events</button></div>
+      <div class="json-toolbar"><span id="jsonState">Waiting for request</span><button id="copyJson" class="subtle-btn">Copy JSON</button></div>
+      <pre class="json-view" id="jsonView"><code>{
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "messages": [],
+  "stream": true,
+  "chat_template_kwargs": {
+    "enable_thinking": false
+  }
+}</code></pre>
+      <div class="inspector-bottom"><div class="mini-status"><span class="pulse"></span><span>LOCAL PROXY</span></div><span>127.0.0.1:3210</span></div>
+    </aside>
   </div>
 
   <div class="modal-backdrop" id="settingsModal" aria-hidden="true">

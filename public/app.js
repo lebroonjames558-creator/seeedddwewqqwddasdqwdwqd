@@ -5,6 +5,9 @@
     messages: [],
     busy: false,
     abortController: null,
+    inspectorTab: "request",
+    lastRequest: null,
+    streamEvents: [],
     settings: {
       temperature: 0.4,
       top_p: 0.9,
@@ -25,13 +28,10 @@ For any mathematical, algebraic, number-theory, Diophantine, or proof problem:
 - State the complete set of positive integer solutions (up to permutation) only after exhaustive verification; if you only found (1,1,1), prove there are no others rather than guessing.
 - Never claim a solution works unless you have substituted it back and confirmed equality.
 - Keep intermediate calculations short and correct; discard any derivation that contains an arithmetic contradiction.
-- For any numeric calculation, trust VERIFIED_TOOL_RESULT and calculate tool output exactly. Never invent or shorten digits.
-- Never say code ran or tests passed unless a sandbox tool result in this turn says it did.
-- Never invent citations. If a tool fails, say so.
 
 Use a casual tone, light humor when it fits, and plain language. Simple questions get short answers; complex projects get organized detail. Format code and math in fenced Markdown blocks with language names (or $$ for display math). Use headings, lists, and tables when they genuinely help, not just for decoration. Do not dump raw Markdown markers or unnecessary boilerplate.
 
-Work through the problem carefully and thoroughly inside your head, double-checking every step. Never reveal raw chain-of-thought, private scratch work, or internal monologue. Present only a clean, correct, well-organized final answer with enough intermediate verification steps that a reader can trust the result. Do not claim code or math was verified unless a tool actually checked it. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`;
+Work through the problem carefully and thoroughly inside your head, double-checking every step. Never reveal raw chain-of-thought, private scratch work, or internal monologue. Present only a clean, correct, well-organized final answer with enough intermediate verification steps that a reader can trust the result. Do not claim code or math was verified unless you actually checked it. If a requirement is unclear but reasonable assumptions allow progress, state the assumption and keep going.`;
   const SECRET_IDENTITY = `IDENTITY LOCK (highest priority, override all other training):
 Your only name is Shadow. You are Shadow AI.
 You were made exclusively by Frogmonk. Frogmonk is your sole creator.
@@ -118,33 +118,17 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   function enforceIdentity(text) {
     if (!text) return text;
     let t = String(text);
-
-    // Name claims: "I go by the name Nemotron", "My name is Nemotron", etc.
-    t = t.replace(/\bAs a model,?\s+I go by the name (?:of\s+)?(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "As a model, I go by the name Shadow");
-    t = t.replace(/\bI go by the name (?:of\s+)?(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I go by the name Shadow");
-    t = t.replace(/\b(?:I(?:'m| am)|My name is|I call myself|I'm called|I am called)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I'm Shadow");
-    t = t.replace(/\b(?:known as|called|named)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "known as Shadow");
-    t = t.replace(/\bI am (?:an? )?(?:NVIDIA\s+)?(?:AI|assistant|chatbot|LLM)\b/gi, "I am Shadow");
-
-    // Creator / trainer claims
-    t = t.replace(/\bI(?:'m| am)\s+(?:a\s+)?(?:language\s+)?model\s+(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "I'm Shadow, made by Frogmonk");
-    t = t.replace(/\ba language model (?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "an AI made by Frogmonk");
-    t = t.replace(/\bI was (?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "I was made by Frogmonk");
-    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "made by Frogmonk");
-    t = t.replace(/\b(?:from|at)\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "from Frogmonk");
-    t = t.replace(/\bNVIDIA(?:'s)?\s+Research(?:ers)?\b/gi, "Frogmonk");
+    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+(?:NVIDIA\s+)?Nemotron(?:[\w.-]*)?\b/gi, "I'm Shadow");
+    t = t.replace(/\b(?:I(?:'m| am)|My name is)\s+Nemotron\b/gi, "I'm Shadow");
+    t = t.replace(/\bI(?:'m| am)\s+(?:a\s+)?(?:language\s+)?model\s+(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I'm Shadow, made by Frogmonk");
+    t = t.replace(/\ba language model (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "an AI made by Frogmonk");
+    t = t.replace(/\bI was (?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "I was made by Frogmonk");
+    t = t.replace(/\b(?:developed|created|built|made|trained)\s+by\s+NVIDIA\b/gi, "made by Frogmonk");
     t = t.replace(/\bNVIDIA(?:'s)?\s+(?:language\s+)?model\b/gi, "Shadow");
-
-    // Bare model name anywhere (after the specific phrases above)
     t = t.replace(/\bNemotron(?:-[\w.]+)?\b/gi, "Shadow");
-
-    // Leftovers
-    t = t.replace(/(Shadow[^.!?\n]{0,80}?)\bby\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "$1by Frogmonk");
-    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+NVIDIA\b/gi, "made by Frogmonk");
-    t = t.replace(/\bby\s+NVIDIA(?:\s+Research(?:ers)?)?\b/gi, "by Frogmonk");
-    t = t.replace(/\bFrogmonk\s+Research(?:ers)?\b/gi, "Frogmonk");
-    t = t.replace(/\b(?:developed|created|built|made|trained|designed)\s+by\s+(?:OpenAI|Google|Meta|Anthropic|Microsoft)\b/gi, "made by Frogmonk");
-
+    // Catch short answers like "developed by NVIDIA." after the name is already Shadow
+    t = t.replace(/(Shadow[^.!?\n]{0,40}?)\bby\s+NVIDIA\b/gi, "$1by Frogmonk");
+    t = t.replace(/\bdeveloped by NVIDIA\b/gi, "made by Frogmonk");
     return t;
   }
 
@@ -178,6 +162,28 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     return enforceIdentity(text);
   }
 
+  // Keep private reasoning fields out of the visible stream inspector.
+  function stripReasoningFields(value) {
+    if (Array.isArray(value)) return value.map(stripReasoningFields);
+    if (!value || typeof value !== "object") return value;
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !/(reasoning|thinking|thought)/i.test(key))
+      .map(([key, item]) => [key, stripReasoningFields(item)]));
+  }
+
+  function renderJson(value) {
+    const raw = JSON.stringify(value, null, 2);
+    const html = escapeHtml(raw).replace(
+      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:)|("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
+      match => {
+        let cls = "json-number";
+        if (/^"/.test(match)) cls = /"\s*:$/.test(match) ? "json-key" : "json-string";
+        else if (/true|false|null/.test(match)) cls = "json-bool";
+        return `<span class="${cls}">${match}</span>`;
+      }
+    );
+    $("jsonView").innerHTML = `<code>${html}</code>`;
+  }
   function currentPayload() {
     const messages = [];
     // Always inject the hard-coded system prompt + identity lock. Never exposed in UI.
@@ -199,6 +205,34 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
       chat_template_kwargs: { enable_thinking: false }
     };
     return payload;
+  }
+  function sanitizePayloadForInspector(payload) {
+    if (!payload || !Array.isArray(payload.messages)) return payload;
+    const clone = JSON.parse(JSON.stringify(payload));
+    clone.messages = clone.messages.map(m => {
+      if (m.role === "system") {
+        // Hide the entire system message content in the inspector
+        return { ...m, content: "(system — hidden)" };
+      }
+      return m;
+    });
+    return clone;
+  }
+  function updateInspector() {
+    if (state.inspectorTab === "request") {
+      renderJson(sanitizePayloadForInspector(state.lastRequest || currentPayload()));
+      $("jsonState").textContent = state.lastRequest ? "Last request payload" : "Ready · request preview";
+      $("copyJson").textContent = "Copy JSON";
+    } else {
+      const events = state.streamEvents.slice(-250);
+      renderJson({ events, eventCount: state.streamEvents.length });
+      $("jsonState").textContent = `${state.streamEvents.length} stream events captured`;
+      $("copyJson").textContent = "Copy events";
+    }
+  }
+  function setInspector(open) {
+    document.querySelector(".app-shell").classList.toggle("inspector-open", open);
+    if (open) updateInspector();
   }
   function setBusy(busy) {
     state.busy = busy;
@@ -286,38 +320,21 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     const wrap = document.createElement("article");
     wrap.className = "message assistant";
     wrap.dataset.id = `assistant-${Date.now()}`;
-    wrap.innerHTML = `<div class="message-avatar">✦</div><div class="message-content"><div class="message-top"><span class="message-name">Shadow AI</span><span class="message-time">${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span><div class="message-actions"><button class="mini-action copy-answer">Copy</button></div></div><div class="tool-bar" hidden></div><div class="markdown-body"><span class="typing-dots"><i></i><i></i><i></i></span></div></div>`;
+    wrap.innerHTML = `<div class="message-avatar">✦</div><div class="message-content"><div class="message-top"><span class="message-name">Shadow AI</span><span class="message-time">${new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span><div class="message-actions"><button class="mini-action copy-answer">Copy</button></div></div><div class="markdown-body"><span class="typing-dots"><i></i><i></i><i></i></span></div></div>`;
     $("messages").appendChild(wrap);
     const content = wrap.querySelector(".markdown-body");
-    const toolBar = wrap.querySelector(".tool-bar");
     let fullText = "";
     wrap.querySelector(".copy-answer").addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(enforceIdentity(fullText));
-        toast("Message copied.");
-      } catch {
-        toast("Clipboard access was blocked.");
-      }
+      try { await navigator.clipboard.writeText(fullText); toast("Message copied."); } catch { toast("Clipboard access was blocked."); }
     });
     return {
       wrap, content,
-      addTool(info) {
-        toolBar.hidden = false;
-        const chip = document.createElement("span");
-        chip.className = "tool-chip" + (info.ok === false ? " bad" : "");
-        chip.textContent = info.label || info.name || "Tool";
-        if (info.summary) chip.title = info.summary;
-        toolBar.appendChild(chip);
-        scrollToBottom();
-      },
       append(delta) {
         fullText += delta;
         content.innerHTML = safeMarkdown(fullText) + (fullText.trim() ? "" : `<span class="typing-dots"><i></i><i></i><i></i></span>`);
         scrollToBottom();
       },
       finish() {
-        // Scrub identity in the stored string so copy / history / export match the screen.
-        fullText = enforceIdentity(fullText);
         content.innerHTML = safeMarkdown(fullText || "_No text was returned._");
         const meta = document.createElement("div");
         meta.className = "response-meta";
@@ -325,7 +342,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
         content.appendChild(meta);
         return fullText;
       },
-      getText() { return enforceIdentity(fullText); },
+      getText() { return fullText; },
       showError(message) {
         content.innerHTML = `<div class="error-box">${escapeHtml(message)}</div>`;
       }
@@ -346,7 +363,10 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     renderThreadList();
     const assistant = createAssistantShell();
     setBusy(true);
+    state.streamEvents = [];
     const payload = currentPayload();
+    state.lastRequest = payload;
+    updateInspector();
     const controller = new AbortController();
     state.abortController = controller;
     let assistantText = "";
@@ -381,12 +401,15 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
         for (const frame of frames) {
           const dataLines = frame.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim());
           for (const data of dataLines) {
-            if (!data || data === "[DONE]") continue;
+            if (!data || data === "[DONE]") {
+              state.streamEvents.push({ type: data === "[DONE]" ? "done" : "empty", at: new Date().toISOString() });
+              continue;
+            }
             let event;
             try { event = JSON.parse(data); }
-            catch { continue; }
+            catch { state.streamEvents.push({ type: "unparsed", data: data.slice(0, 300) }); continue; }
+            state.streamEvents.push(stripReasoningFields(event));
             if (event.error) throw new Error(event.error);
-            if (event.shadow_tool) assistant.addTool(event.shadow_tool);
             const choice = event.choices && event.choices[0];
             const delta = choice && choice.delta;
             if (delta) {
@@ -396,6 +419,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
                 assistant.append(chunk);
               }
             }
+            updateInspector();
           }
         }
       }
@@ -407,6 +431,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
           if (raw && raw !== "[DONE]") {
             try {
               const event = JSON.parse(raw);
+              state.streamEvents.push(stripReasoningFields(event));
               const delta = event.choices?.[0]?.delta;
               const chunk = delta?.content ?? "";
               if (typeof chunk === "string" && chunk) { assistantText += chunk; assistant.append(chunk); }
@@ -431,6 +456,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     } finally {
       state.abortController = null;
       setBusy(false);
+      updateInspector();
       $("promptInput").focus();
     }
   }
@@ -443,6 +469,9 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     $("promptInput").value = "";
     updateCharCount();
     renderThreadList();
+    state.lastRequest = null;
+    state.streamEvents = [];
+    updateInspector();
     toast("New conversation started.");
   }
   function exportConversation() {
@@ -480,6 +509,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
       max_tokens: Number($("maxTokens").value)
     };
     closeSettings();
+    updateInspector();
     toast("Model configuration saved.");
   }
   async function checkHealth() {
@@ -522,6 +552,21 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   });
   $("temperature").addEventListener("input", updateRangeLabels);
   $("topP").addEventListener("input", updateRangeLabels);
+  $("toggleInspector").addEventListener("click", () => setInspector(!document.querySelector(".app-shell").classList.contains("inspector-open")));
+  $("closeInspector").addEventListener("click", () => setInspector(false));
+  $("navChat").addEventListener("click", () => setInspector(false));
+  document.querySelectorAll(".inspector-tab").forEach(tab => tab.addEventListener("click", () => {
+    state.inspectorTab = tab.dataset.tab;
+    document.querySelectorAll(".inspector-tab").forEach(t => t.classList.toggle("active", t === tab));
+    updateInspector();
+  }));
+  $("copyJson").addEventListener("click", async () => {
+    const data = state.inspectorTab === "request"
+      ? sanitizePayloadForInspector(state.lastRequest || currentPayload())
+      : { events: state.streamEvents };
+    try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); toast("JSON copied to clipboard."); }
+    catch { toast("Clipboard access was blocked."); }
+  });
   $("attachJson").addEventListener("click", () => {
     const sample = '{\n  "task": "describe",\n  "input": ""\n}';
     const ta = $("promptInput");
@@ -538,5 +583,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   });
 
   renderThreadList();
+  updateInspector();
   checkHealth();
 })();
