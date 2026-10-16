@@ -204,7 +204,7 @@ kbd { margin-left:auto;font:10px "DM Mono",monospace;color:#8b819f;border:1px so
   .welcome { padding:30px 17px 12px; }.hero-orb { width:84px;height:84px;margin:19px auto 13px; }.orb-core { width:47px;height:47px;border-radius:16px;font-size:23px; }.welcome h1 { font-size:29px;letter-spacing:-1.2px; }.hero-copy { font-size:11px; }.suggestions { grid-template-columns:1fr;gap:7px; }.suggestion { min-height:61px;padding:10px; }.suggestion-icon { width:31px;height:31px; }
   .messages { padding:0 15px 20px; }.message { grid-template-columns:27px minmax(0,1fr);gap:9px;margin:18px 0 24px; }.message-avatar { width:26px;height:26px;border-radius:8px; }.markdown-body { font-size:12px; }.markdown-body h1 { font-size:20px; }.markdown-body h2 { font-size:16px; }.markdown-body pre { margin-left:-3px;margin-right:-3px;padding-left:12px;padding-right:12px; }
   .composer-wrap { width:calc(100% - 20px);padding:8px 0 10px; }.composer { border-radius:13px; }.composer-disclaimer { font-size:8px; }.tool-btn { padding:6px 5px; }.char-count { display:none; }
-  .inspector-panel { width:min(100%,340px); }.settings-modal { padding:18px; }.settings-grid { grid-template-columns:1fr; }.modal-backdrop { padding:10px; }
+  .settings-modal { padding:18px; }.settings-grid { grid-template-columns:1fr; }.modal-backdrop { padding:10px; }
 }
 
 /* Scroll-area fix: keep the app viewport-sized and let the chat/sidebar scroll. */
@@ -253,8 +253,7 @@ body {
 
 /* On small screens, the main column is a full-height flex container too. */
 @media (max-width: 650px) {
-  .app-shell,
-  .app-shell.inspector-open {
+  .app-shell {
     height: 100vh;
     height: 100dvh;
     overflow: hidden;
