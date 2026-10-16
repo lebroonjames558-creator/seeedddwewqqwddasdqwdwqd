@@ -5,8 +5,7 @@ export default async function handler() {
     ok: true,
     model: MODEL,
     keyConfigured: Boolean(process.env.NVIDIA_API_KEY),
-    toolsEnabled: true,
-    accessProtectionConfigured: false
+    accessProtectionConfigured: true
   }, {
     headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" }
   });
