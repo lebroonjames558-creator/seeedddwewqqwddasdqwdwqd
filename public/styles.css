@@ -13,8 +13,7 @@ button { color:inherit; cursor:pointer; }
 .ambient-a { width:440px;height:440px;left:16%;top:-300px;background:#8b5cf6; }
 .ambient-b { width:400px;height:500px;right:-270px;bottom:-280px;background:#4f46e5; }
 .grain { position:fixed;inset:0;opacity:.045;pointer-events:none;z-index:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E"); }
-.app-shell { position:relative;z-index:1;display:grid;grid-template-columns:252px minmax(420px,1fr) 0; height:100dvh; transition:grid-template-columns .25s ease; }
-.app-shell.inspector-open { grid-template-columns:252px minmax(420px,1fr) 330px; }
+.app-shell { position:relative;z-index:1;display:grid;grid-template-columns:252px minmax(0,1fr); height:100dvh; }
 .sidebar { display:flex;flex-direction:column;min-width:0;padding:22px 15px 14px;border-right:1px solid var(--line);background:rgba(13,10,22,.75);backdrop-filter:blur(28px); }
 .brand { display:flex;align-items:center;gap:10px;padding:0 8px 24px; }
 .brand-mark { width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#b6a0ff,#7543d6);box-shadow:0 5px 24px #8b5cf632;color:white;font-size:20px; }
@@ -168,23 +167,8 @@ kbd { margin-left:auto;font:10px "DM Mono",monospace;color:#8b819f;border:1px so
 .composer-disclaimer { text-align:center;margin-top:10px;color:#665c78;font-size:9px; }
 .composer-disclaimer span { margin:0 5px;color:#4e435f; }
 .composer-disclaimer button { border:0;background:transparent;color:#9d8bc2;font-size:9px;padding:0; }
-.inspector-panel { min-width:0;overflow:hidden;border-left:1px solid var(--line);background:rgba(14,11,23,.86);display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateX(12px);transition:opacity .2s,transform .2s; }
-.inspector-open .inspector-panel { opacity:1;pointer-events:auto;transform:translateX(0); }
-.inspector-head { display:flex;align-items:flex-start;justify-content:space-between;padding:24px 17px 15px;border-bottom:1px solid var(--line); }
 .panel-kicker { font:9px "DM Mono",monospace;letter-spacing:1.2px;color:#9b84d0; }
-.inspector-head h2,.modal-head h2 { margin:8px 0 0;font-size:17px;letter-spacing:-.6px; }
-.inspector-desc { color:#887d9c;font-size:10px;line-height:1.7;padding:0 18px;margin:13px 0 16px; }
-.inspector-tabs { display:flex;gap:5px;padding:0 14px;border-bottom:1px solid var(--line); }
-.inspector-tab { padding:10px 8px;border:0;border-bottom:2px solid transparent;background:transparent;color:#837791;font-size:10px; }
-.inspector-tab.active { color:#d4c3ff;border-bottom-color:#a78bfa; }
-.json-toolbar { display:flex;justify-content:space-between;align-items:center;padding:12px 15px;color:#7d718e;font:9px "DM Mono",monospace; }
-.subtle-btn { border:1px solid var(--line);border-radius:7px;background:#ffffff04;color:#aa9cbe;padding:7px 9px;font-size:10px; }
-.subtle-btn:hover { color:#fff;border-color:#a78bfa55; }
-.json-view { flex:1;min-height:0;overflow:auto;margin:0;padding:15px 15px 25px;border-top:1px solid #ffffff05;color:#c9bce0;font:10px/1.8 "DM Mono",monospace;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2; }
-.json-view code { color:inherit; }
-.json-key { color:#c3a6ff; }.json-string { color:#8bd9bd; }.json-number { color:#f3c785; }.json-bool { color:#9ed5ff; }
-.inspector-bottom { display:flex;justify-content:space-between;align-items:center;padding:12px 15px;border-top:1px solid var(--line);font:9px "DM Mono",monospace;color:#716681; }
-.mini-status { display:flex;align-items:center;gap:7px;color:#9c8cb5; }
+.modal-head h2 { margin:8px 0 0;font-size:17px;letter-spacing:-.6px; }
 .modal-backdrop { position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;padding:20px;background:#07050cc9;backdrop-filter:blur(12px); }
 .modal-backdrop.open { display:flex; }
 .settings-modal { width:min(590px,100%);max-height:90dvh;overflow:auto;border:1px solid #bba5ff2b;border-radius:18px;padding:24px;background:linear-gradient(145deg,#1a1428,#100d19);box-shadow:0 35px 120px #0008; }
@@ -210,10 +194,10 @@ kbd { margin-left:auto;font:10px "DM Mono",monospace;color:#8b819f;border:1px so
 .tool-chip.bad { color:#ffb3c0; border-color:#fb718555; background:#3a2030; }
 .error-box { border:1px solid #fb718533;border-radius:9px;background:#fb71830a;color:#ffb3c0;padding:12px 14px;line-height:1.7;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere; }
 .response-meta { margin-top:12px;color:#776b8c;font:9px "DM Mono",monospace; }
-@media (max-width:1200px) { .app-shell.inspector-open { grid-template-columns:220px minmax(360px,1fr) 300px; } .sidebar { padding-left:12px;padding-right:12px; } }
-@media (max-width:950px) { .app-shell,.app-shell.inspector-open { grid-template-columns:220px minmax(0,1fr); } .inspector-panel { position:fixed;right:0;top:0;bottom:0;width:320px;z-index:5;box-shadow:-20px 0 70px #0007; } .inspector-open .inspector-panel { opacity:1;pointer-events:auto; } }
+@media (max-width:1200px) { .sidebar { padding-left:12px;padding-right:12px; } }
+@media (max-width:950px) { .app-shell { grid-template-columns:220px minmax(0,1fr); } }
 @media (max-width:650px) {
-  body { overflow:hidden; }.app-shell,.app-shell.inspector-open { display:block; }
+  body { overflow:hidden; }.app-shell { display:block; }
   .sidebar { position:fixed;z-index:12;inset:0 auto 0 0;width:270px;transform:translateX(-105%);transition:transform .25s;box-shadow:20px 0 60px #0006; }
   .sidebar.mobile-open { transform:translateX(0); }.sidebar-close,.mobile-menu { display:grid; }.brand { flex:1; }.brand .sidebar-close { margin-left:auto; }
   .main-panel { height:100dvh; }.topbar { height:58px;padding:0 13px; }.topbar-left,.topbar-right { gap:7px; }.connection { font-size:9px; }.topbar-right .icon-btn { width:30px;height:30px; }
@@ -241,8 +225,7 @@ body {
 }
 
 .sidebar,
-.main-panel,
-.inspector-panel {
+.main-panel {
   min-height: 0;
 }
 

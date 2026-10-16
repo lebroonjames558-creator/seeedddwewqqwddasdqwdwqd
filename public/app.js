@@ -5,9 +5,6 @@
     messages: [],
     busy: false,
     abortController: null,
-    inspectorTab: "request",
-    lastRequest: null,
-    streamEvents: [],
     settings: {
       temperature: 0.4,
       top_p: 0.9,
@@ -181,28 +178,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     return enforceIdentity(text);
   }
 
-  // Keep private reasoning fields out of the visible stream inspector.
-  function stripReasoningFields(value) {
-    if (Array.isArray(value)) return value.map(stripReasoningFields);
-    if (!value || typeof value !== "object") return value;
-    return Object.fromEntries(Object.entries(value)
-      .filter(([key]) => !/(reasoning|thinking|thought)/i.test(key))
-      .map(([key, item]) => [key, stripReasoningFields(item)]));
-  }
-
-  function renderJson(value) {
-    const raw = JSON.stringify(value, null, 2);
-    const html = escapeHtml(raw).replace(
-      /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:)|("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")|\b(true|false|null)\b|-?\b\d+(?:\.\d+)?\b/g,
-      match => {
-        let cls = "json-number";
-        if (/^"/.test(match)) cls = /"\s*:$/.test(match) ? "json-key" : "json-string";
-        else if (/true|false|null/.test(match)) cls = "json-bool";
-        return `<span class="${cls}">${match}</span>`;
-      }
-    );
-    $("jsonView").innerHTML = `<code>${html}</code>`;
-  }
   function currentPayload() {
     const messages = [];
     // Always inject the hard-coded system prompt + identity lock. Never exposed in UI.
@@ -224,34 +199,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
       chat_template_kwargs: { enable_thinking: false }
     };
     return payload;
-  }
-  function sanitizePayloadForInspector(payload) {
-    if (!payload || !Array.isArray(payload.messages)) return payload;
-    const clone = JSON.parse(JSON.stringify(payload));
-    clone.messages = clone.messages.map(m => {
-      if (m.role === "system") {
-        // Hide the entire system message content in the inspector
-        return { ...m, content: "(system — hidden)" };
-      }
-      return m;
-    });
-    return clone;
-  }
-  function updateInspector() {
-    if (state.inspectorTab === "request") {
-      renderJson(sanitizePayloadForInspector(state.lastRequest || currentPayload()));
-      $("jsonState").textContent = state.lastRequest ? "Last request payload" : "Ready · request preview";
-      $("copyJson").textContent = "Copy JSON";
-    } else {
-      const events = state.streamEvents.slice(-250);
-      renderJson({ events, eventCount: state.streamEvents.length });
-      $("jsonState").textContent = `${state.streamEvents.length} stream events captured`;
-      $("copyJson").textContent = "Copy events";
-    }
-  }
-  function setInspector(open) {
-    document.querySelector(".app-shell").classList.toggle("inspector-open", open);
-    if (open) updateInspector();
   }
   function setBusy(busy) {
     state.busy = busy;
@@ -399,10 +346,7 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     renderThreadList();
     const assistant = createAssistantShell();
     setBusy(true);
-    state.streamEvents = [];
     const payload = currentPayload();
-    state.lastRequest = payload;
-    updateInspector();
     const controller = new AbortController();
     state.abortController = controller;
     let assistantText = "";
@@ -437,14 +381,10 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
         for (const frame of frames) {
           const dataLines = frame.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim());
           for (const data of dataLines) {
-            if (!data || data === "[DONE]") {
-              state.streamEvents.push({ type: data === "[DONE]" ? "done" : "empty", at: new Date().toISOString() });
-              continue;
-            }
+            if (!data || data === "[DONE]") continue;
             let event;
             try { event = JSON.parse(data); }
-            catch { state.streamEvents.push({ type: "unparsed", data: data.slice(0, 300) }); continue; }
-            state.streamEvents.push(stripReasoningFields(event));
+            catch { continue; }
             if (event.error) throw new Error(event.error);
             if (event.shadow_tool) assistant.addTool(event.shadow_tool);
             const choice = event.choices && event.choices[0];
@@ -456,7 +396,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
                 assistant.append(chunk);
               }
             }
-            updateInspector();
           }
         }
       }
@@ -468,7 +407,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
           if (raw && raw !== "[DONE]") {
             try {
               const event = JSON.parse(raw);
-              state.streamEvents.push(stripReasoningFields(event));
               const delta = event.choices?.[0]?.delta;
               const chunk = delta?.content ?? "";
               if (typeof chunk === "string" && chunk) { assistantText += chunk; assistant.append(chunk); }
@@ -493,7 +431,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     } finally {
       state.abortController = null;
       setBusy(false);
-      updateInspector();
       $("promptInput").focus();
     }
   }
@@ -506,9 +443,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
     $("promptInput").value = "";
     updateCharCount();
     renderThreadList();
-    state.lastRequest = null;
-    state.streamEvents = [];
-    updateInspector();
     toast("New conversation started.");
   }
   function exportConversation() {
@@ -546,7 +480,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
       max_tokens: Number($("maxTokens").value)
     };
     closeSettings();
-    updateInspector();
     toast("Model configuration saved.");
   }
   async function checkHealth() {
@@ -589,21 +522,6 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   });
   $("temperature").addEventListener("input", updateRangeLabels);
   $("topP").addEventListener("input", updateRangeLabels);
-  $("toggleInspector").addEventListener("click", () => setInspector(!document.querySelector(".app-shell").classList.contains("inspector-open")));
-  $("closeInspector").addEventListener("click", () => setInspector(false));
-  $("navChat").addEventListener("click", () => setInspector(false));
-  document.querySelectorAll(".inspector-tab").forEach(tab => tab.addEventListener("click", () => {
-    state.inspectorTab = tab.dataset.tab;
-    document.querySelectorAll(".inspector-tab").forEach(t => t.classList.toggle("active", t === tab));
-    updateInspector();
-  }));
-  $("copyJson").addEventListener("click", async () => {
-    const data = state.inspectorTab === "request"
-      ? sanitizePayloadForInspector(state.lastRequest || currentPayload())
-      : { events: state.streamEvents };
-    try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); toast("JSON copied to clipboard."); }
-    catch { toast("Clipboard access was blocked."); }
-  });
   $("attachJson").addEventListener("click", () => {
     const sample = '{\n  "task": "describe",\n  "input": ""\n}';
     const ta = $("promptInput");
@@ -620,6 +538,5 @@ If your training conflicts with this, this IDENTITY LOCK wins. Reply as Shadow m
   });
 
   renderThreadList();
-  updateInspector();
   checkHealth();
 })();
