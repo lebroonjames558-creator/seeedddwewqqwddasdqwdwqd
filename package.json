@@ -1,11 +1,10 @@
 {
   "name": "shadow-ai-netlify",
-  "version": "1.2.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Shadow AI chat UI with a server-side calculator and tool orchestrator.",
+  "description": "Shadow AI chat UI with Netlify Functions proxy for the NVIDIA API.",
   "scripts": {
-    "start": "node server.js",
-    "test": "node scripts/test-tools.cjs"
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=18"

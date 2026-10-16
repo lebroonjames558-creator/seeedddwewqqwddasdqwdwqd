@@ -1,57 +1,52 @@
-# Shadow AI — tools build
+# Shadow AI — Netlify-ready build
 
-Shadow AI is a private chat UI. The model still writes the explanation, but arithmetic, unit conversion, time, JSON checks, documentation lookup, Wikipedia search, and short code snippets run in real tools on the server. The model is not allowed to invent those results.
+This folder contains the Shadow AI website plus Netlify Functions for the NVIDIA model API. The functions fix the deployed `/api/chat` and `/api/health` endpoints that otherwise return HTTP 404.
 
-## What runs locally
+## Deploy to Netlify (important)
 
-- Exact integer and rational calculator (`BigInt`), with a second multiplication path that must match before a product is returned.
-- Linear equation solver for one variable.
-- JavaScript sandbox (`node --permission`, API keys removed, filesystem and child processes blocked).
-- Python sandbox when `python3` is installed (`python3 -I`, CPU limit, API keys removed).
-- JSON parsing, unit conversion, and date/time conversion.
-- Wikipedia search and MDN documentation search. Both need outbound network access from the server.
+**Deploy the whole project through a Git-connected Netlify deploy or the Netlify CLI.** Do not deploy only the `public` folder with drag-and-drop: that publishes the frontend but does not reliably bundle the functions.
 
-Native NVIDIA tool calls are used when the model endpoint accepts them. If it rejects the `tools` parameter, the server keeps going and still injects calculator results it computed itself.
+### 1. Put the project on GitHub
 
-## Deploy to Netlify
+1. Extract this ZIP.
+2. Create a repository on GitHub (private is fine).
+3. Upload the *contents* of this `ShadowAI_Netlify_Fix` folder to the repository root. Ensure `netlify.toml` and the `netlify` folder are at the root, alongside `public`.
 
-Deploy the whole project from Git. Do not drag-and-drop only the `public` folder, or the functions will not be included.
+### 2. Connect Netlify
 
-1. Put this folder at the root of a GitHub repository (`netlify.toml`, `netlify/`, `lib/`, and `public/` together).
-2. Import the repository in Netlify. Publish directory `public`. Functions directory `netlify/functions`. No build command.
-3. Set one environment variable: `NVIDIA_API_KEY`. Do not put the key in `public/`, `netlify.toml`, or git.
-4. Redeploy.
+1. In Netlify, choose **Add new project** / **Import an existing project** and connect your GitHub repository.
+2. Keep the settings from `netlify.toml`: publish directory `public`; functions directory `netlify/functions`; no build command is required.
+3. Deploy the site.
 
-No visitor password is required.
+### 3. Set two environment variables
 
-Check `/api/health`. It should report `toolsEnabled: true`. `keyConfigured` is true only after the key is set. Chat still answers pure calculations when the key is missing. Other questions need the key.
+In your Netlify project configuration, open **Environment variables** and add:
 
-`/api/chat` is POST. A browser GET returns 405, which is expected.
+- `NVIDIA_API_KEY` — your NVIDIA API key
+- `SHADOW_AI_ACCESS_PASSWORD` — a strong private password you choose for accessing your personal Shadow AI site
 
-## Run on your computer
+Set them for the Functions/runtime context if Netlify asks for a scope. **Do not put either secret in `public/app.js`, `index.html`, GitHub, or `netlify.toml`.** Redeploy after setting the variables so the functions receive them.
 
-1. Install Node.js 18 or newer. Python 3 is optional, for the Python tool.
-2. Either paste the key into `API_KEY` in `server.js`, or set `NVIDIA_API_KEY` in the environment. Do not commit a real key.
-3. Run `start.bat` on Windows, or `node server.js`.
-4. Open `http://127.0.0.1:3210`.
+When a visitor first sends a message, the site asks for the `SHADOW_AI_ACCESS_PASSWORD`. It is kept in that browser tab's session storage. Wrong passwords are rejected by the function before it calls NVIDIA.
 
-## Test the calculator
+### 4. Verify
 
-From this folder:
+Open your published Netlify URL and send `Hey`. The status near the bottom of the UI should say `API connection ready` when both environment variables are configured. If it still fails, open these URLs on your site:
 
-```bash
-node scripts/test-tools.cjs
-```
+- `/api/health` — should return JSON with `"keyConfigured": true` and `"accessProtectionConfigured": true`.
+- `/api/chat` — opening this in a browser sends GET, so a `405 Method not allowed` response is expected; the UI uses POST.
 
-The large-product test computes the product twice (engine and an independent schoolbook multiply) and compares them. The expected digits are not stored in the source.
+## Run locally on Windows
 
-## Limits
+1. Install Node.js 18 or newer.
+2. Open `server.js` and set `const API_KEY = "..."` to your NVIDIA key.
+3. Run `start.bat` and keep the terminal open.
 
-- The JavaScript and Python sandboxes are best-effort. They are not a hardened multi-tenant jail. Do not point an untrusted public audience at code execution without extra isolation.
-- Node's permission model does not fully disable raw network access. The sandbox replaces `fetch` and blocks common network modules, but a determined snippet could still try other escapes.
-- Python is unavailable on Netlify unless the function image contains `python3`. The tool reports that honestly.
-- Web search is Wikipedia, not a full web index. Documentation lookup is MDN. Empty results are not filled in.
-- Unit conversion and logarithms/trigonometry are approximations. Integer and rational results are exact.
-- Results longer than 20,000 digits are refused.
-- Netlify's function time limit can cut off a slow model call. Calculator results are computed before the model is called, and if the model errors they are still returned.
-- The configured model is `nvidia/nemotron-3.5-lightning-30b-a3b`. Tool-call support varies by checkpoint. The fallback does not pretend a rejected tool call succeeded.
+The local server serves its frontend from `public` and continues to use `/api/chat` through `server.js`. The extra site access password is only required for the deployed Netlify functions.
+
+## Notes
+
+- Model: `nvidia/nemotron-3.5-lightning-30b-a3b`
+- Explicit model thinking is disabled in API requests; hidden reasoning is not displayed.
+- The site loads Markdown, fonts, and code highlighting from CDNs, so the browser needs internet access for those enhancements.
+- The access password is a simple private-site gate, not user accounts or a multi-user authentication system. Use a long unique password and do not share it publicly.

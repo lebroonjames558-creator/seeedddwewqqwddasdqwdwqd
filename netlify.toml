@@ -4,10 +4,6 @@
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["lib/**"]
-
-[functions."chat"]
-  timeout = 26
 
 [[redirects]]
   from = "/api/chat"

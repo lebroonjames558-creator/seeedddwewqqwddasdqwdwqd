@@ -1,15 +1,16 @@
-// Shadow AI local server, model proxy, and tool orchestrator.
-// Paste your API provider key into API_KEY below, or set NVIDIA_API_KEY.
+// Shadow AI local server and hosted-model API proxy.
+// Paste your API provider key into API_KEY below.
 // Keep this file private; never publish it with a real key.
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
-const { runChat, MODEL } = require("./lib/orchestrate.cjs");
 
-const HOST = process.env.HOST || "127.0.0.1";
+const HOST = "127.0.0.1";
 const PORT = Number(process.env.PORT || 3210);
+const MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b";
 
-const API_KEY = process.env.NVIDIA_API_KEY || "PASTE_YOUR_API_KEY_HERE";
+// Paste your API key between these quotes:
+const API_KEY = "PASTE_YOUR_API_KEY_HERE";
 
 const ROOT = path.join(__dirname, "public");
 const MIME = {
@@ -19,21 +20,6 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml"
 };
-
-const hits = new Map();
-
-function allow(ip) {
-  const now = Date.now();
-  const recent = (hits.get(ip) || []).filter((stamp) => now - stamp < 60_000);
-  if (recent.length >= 30) return false;
-  recent.push(now);
-  hits.set(ip, recent);
-  return true;
-}
-
-function keyReady() {
-  return Boolean(API_KEY && API_KEY !== "PASTE_YOUR_API_KEY_HERE");
-}
 
 function send(res, status, data, type = "application/json; charset=utf-8") {
   res.writeHead(status, {
@@ -47,7 +33,7 @@ function send(res, status, data, type = "application/json; charset=utf-8") {
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => {
+    req.on("data", chunk => {
       data += chunk;
       if (data.length > 2_000_000) {
         reject(new Error("Request body too large."));
@@ -62,11 +48,6 @@ function readBody(req) {
   });
 }
 
-function clamp(value, min, max, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
-}
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `${HOST}:${PORT}`}`);
 
@@ -74,23 +55,66 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, {
       ok: true,
       model: MODEL,
-      keyConfigured: keyReady(),
-      toolsEnabled: true,
-      accessProtectionConfigured: false
+      keyConfigured: Boolean(API_KEY && API_KEY !== "PASTE_YOUR_API_KEY_HERE"),
+      accessProtectionConfigured: true
     });
   }
 
   if (req.method === "POST" && url.pathname === "/api/chat") {
-    const ip = req.socket.remoteAddress || "local";
-    if (!allow(ip)) return send(res, 429, { error: "Too many requests. Wait a minute and try again." });
+    if (!API_KEY || API_KEY === "PASTE_YOUR_API_KEY_HERE") {
+      return send(res, 400, {
+        error: "Add your API key to the API_KEY constant near the top of server.js, then restart the app."
+      });
+    }
 
     let input;
     try { input = await readBody(req); }
-    catch (error) { return send(res, 400, { error: error.message }); }
+    catch (e) { return send(res, 400, { error: e.message }); }
 
     const messages = Array.isArray(input.messages) ? input.messages : [];
     if (!messages.length || messages.length > 100) {
       return send(res, 400, { error: "messages must be a non-empty array (up to 100 messages)." });
+    }
+
+    const allowedRoles = new Set(["system", "user", "assistant"]);
+    const cleanMessages = messages.map(m => ({
+      role: allowedRoles.has(m.role) ? m.role : "user",
+      content: String(m.content ?? "").slice(0, 100_000)
+    }));
+
+    const payload = {
+      model: MODEL,
+      messages: cleanMessages,
+      temperature: clamp(input.temperature, 0, 1, 0.4),
+      top_p: clamp(input.top_p, 0, 1, 0.9),
+      max_tokens: Math.round(clamp(input.max_tokens, 1, 16384, 8192)),
+      stream: true,
+      // Disable the model's explicit reasoning trace; show only the final answer.
+      chat_template_kwargs: { enable_thinking: false }
+    };
+
+    let upstream;
+    try {
+      upstream = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(180_000)
+      });
+    } catch (e) {
+      return send(res, 502, { error: `Could not reach the model API: ${e.message}` });
+    }
+
+    if (!upstream.ok) {
+      const detail = await upstream.text();
+      return send(res, upstream.status, {
+        error: `Model API returned HTTP ${upstream.status}.`,
+        detail: detail.slice(0, 12000)
+      });
     }
 
     res.writeHead(200, {
@@ -100,24 +124,26 @@ const server = http.createServer(async (req, res) => {
       "X-Accel-Buffering": "no"
     });
 
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
+
     try {
-      const generator = runChat({
-        apiKey: keyReady() ? API_KEY : "",
-        messages,
-        temperature: clamp(input.temperature, 0, 1, 0.4),
-        top_p: clamp(input.top_p, 0, 1, 0.9),
-        max_tokens: Math.round(clamp(input.max_tokens, 1, 16384, 8192))
-      });
-      for await (const chunk of generator) {
-        if (res.destroyed) break;
-        res.write(chunk);
+      const reader = upstream.body.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (res.destroyed) {
+          await reader.cancel();
+          break;
+        }
+        res.write(Buffer.from(value));
       }
-    } catch (error) {
-      const status = error.status || 502;
-      if (!res.headersSent) {
-        return send(res, status, { error: error.message || "Chat failed." });
+    } catch (e) {
+      if (!res.destroyed) {
+        res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
       }
-      res.write(`data: ${JSON.stringify({ error: error.message || "Chat failed." })}\n\n`);
     }
     if (!res.writableEnded) res.end();
     return;
@@ -135,15 +161,6 @@ const server = http.createServer(async (req, res) => {
   }
   fs.readFile(resolved, (err, data) => {
     if (err) return send(res, 404, "Not found", "text/plain; charset=utf-8");
-    if (req.method === "HEAD") {
-      res.writeHead(200, {
-        "Content-Type": MIME[path.extname(resolved)] || "application/octet-stream",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff"
-      });
-      res.end();
-      return;
-    }
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(resolved)] || "application/octet-stream",
       "Cache-Control": "no-store",
@@ -153,12 +170,17 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+function clamp(value, min, max, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+}
+
 server.listen(PORT, HOST, () => {
   console.log("");
-  console.log("  Shadow AI");
+  console.log("  ✦ Shadow AI");
   console.log(`  Local URL: http://${HOST}:${PORT}`);
   console.log(`  Model:     ${MODEL}`);
-  console.log(`  API key:   ${keyReady() ? "configured" : "not configured yet"}`);
-  console.log("  Tools:     exact calculator, code sandbox, units, time, search");
+  console.log(`  API key:   ${API_KEY !== "PASTE_YOUR_API_KEY_HERE" ? "configured" : "not configured yet"}`);
+  console.log("  Press Ctrl+C to stop.");
   console.log("");
 });
